@@ -34,9 +34,8 @@ def publisher_pdf_variants(url: str) -> List[str]:
             doi = m.group(1)
             variants += [f"{base}/pdfdirect/{doi}?download=true", f"{base}/pdf/{doi}"]
     elif (host == "mdpi.com" or host.endswith(".mdpi.com")) and re.search(r"/\d{4}-\d{3}[\dXx]/|/\d+/\d+/\d+", parsed.path):
-        path = parsed.path.rstrip("/")
-        if not path.endswith("/pdf"):
-            variants.append(f"{parsed.scheme}://{parsed.netloc}{path}/pdf")
+        path = re.sub(r"/(?:pdf(?:-vor)?|html|xml|notes|reprints)$", "", parsed.path.rstrip("/"))
+        variants.append(f"https://{parsed.netloc}{path}/pdf")
     elif (host == "frontiersin.org" or host.endswith(".frontiersin.org")) and "/articles/" in parsed.path:
         path = re.sub(r"/(full|abstract|pdf)$", "", parsed.path.rstrip("/"))
         variants.append(f"{parsed.scheme}://{parsed.netloc}{path}/pdf")
@@ -61,13 +60,19 @@ def publisher_pdf_variants(url: str) -> List[str]:
         match = re.fullmatch(r"/(\d{4}/\d+)(?:\.pdf)?/?", parsed.path)
         if match:
             variants.append(f"https://eprint.iacr.org/{match.group(1)}.pdf")
-    elif host == "ieeexplore.ieee.org":
+    elif host in ("ieeexplore.ieee.org", "xplorestaging.ieee.org"):
+        if host == "xplorestaging.ieee.org":
+            variants.append(f"https://ieeexplore.ieee.org{parsed.path}" + ("?" + parsed.query if parsed.query else ""))
         number = parse_qs(parsed.query).get("arnumber", [""])[0]
         if not number:
             match = re.search(r"/(?:abstract/)?document/(\d+)", parsed.path)
             number = match.group(1) if match else ""
         if number.isdigit():
             variants.append(f"https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber={number}")
+    elif host in ("linkinghub.elsevier.com", "www.sciencedirect.com", "sciencedirect.com"):
+        match = re.search(r"/(?:retrieve/pii|science/article/pii)/([A-Za-z0-9]+)", parsed.path)
+        if match:
+            variants.append(f"https://www.sciencedirect.com/science/article/pii/{match.group(1)}/pdfft?isDTMRedir=true&download=true")
     elif host == "hal.science" or host.endswith(".hal.science"):
         match = re.fullmatch(r"/((?:hal|inria|tel|pastel)-\d+(?:v\d+)?)(?:/document)?/?", parsed.path)
         if match:
@@ -168,12 +173,20 @@ class LandingPageResolver:
                 continue
             target = urljoin(resp.url, href)
             same_host = urlparse(target).hostname == urlparse(resp.url).hostname
+            # MDPI serves article assets on a separate official host. Only accept
+            # the current article's deployment directory, never cited PDFs.
+            mdpi_asset = False
+            if (urlparse(resp.url).hostname or "").endswith(".mdpi.com") or urlparse(resp.url).hostname == "mdpi.com":
+                asset_host = (urlparse(target).hostname or "").lower()
+                article_id = soup.find("meta", attrs={"name": re.compile(r"^citation_id$", re.I)})
+                identifier = (article_id.get("content") or "") if article_id else ""
+                mdpi_asset = (asset_host == "mdpi-res.com" or asset_host.endswith(".mdpi-res.com")) and bool(identifier) and f"/{identifier}/article_deploy/" in urlparse(target).path
             pdf_link = bool(re.search(r"\.pdf($|\?)", href, re.I))
             pdf_control = "download pdf" in text or "full text pdf" in text or "view pdf" in text
             # ORBilu and other repositories often label a file simply "Download".
             download_control = text == "download" and re.search(r"\.pdf($|\?)|/bitstream/|/bitstreams/", target, re.I)
             repository_file = same_host and ("/bitstreams/" in href or "/bitstream/" in href) and ("download" in text or ".pdf" in text)
-            if (same_host and pdf_link) or pdf_control or repository_file or download_control:
+            if ((same_host or mdpi_asset) and pdf_link) or pdf_control or repository_file or download_control:
                 urls.append(target)
         for embedded in soup.find_all(["iframe", "embed", "object"]):
             raw_target = embedded.get("src") or embedded.get("data") or ""

@@ -1,4 +1,31 @@
 {
+  "10.1016/j.patcog.2013.08.007": {
+    "title": "Approximate polytope ensemble for one-class classification",
+    "source_page": "https://diposit.ub.edu/bitstreams/490b37b9-fdb7-43d7-83c5-d4aeb523ccce/download",
+    "verified_on": "2026-10-31",
+    "pdf_urls": [
+      "https://diposit.ub.edu/bitstreams/490b37b9-fdb7-43d7-83c5-d4aeb523ccce/download"
+    ]
+  },
+  "10.1016/j.cose.2020.101793": {
+    "title": "A graph-theoretic approach for the detection of phishing webpages",
+    "source_page": "https://ir.unimas.my/id/eprint/31278/",
+    "verified_on": "2026-10-31",
+    "pdf_urls": [
+      "https://ris.cdu.edu.au/ws/files/34079517/33300082.pdf",
+      "https://researchers.cdu.edu.au/files/34079517/33300082.pdf"
+    ]
+  },
+  "10.3390/e17042367": {
+    "title": "An Entropy-Based Network Anomaly Detection Method",
+    "source_page": "https://www.mdpi.com/1099-4300/17/4/2367/notes",
+    "verified_on": "2026-10-31",
+    "provider": "MDPI official assets",
+    "oa_status": "gold",
+    "pdf_urls": [
+      "https://mdpi-res.com/d_attachment/entropy/entropy-17-02367/article_deploy/entropy-17-02367-v2.pdf?version=1429602828"
+    ]
+  },
   "10.1145/1557019.1557153": {
     "title": "Beyond Blacklists: Learning to Detect Malicious Web Sites from Suspicious URLs",
     "source_page": "https://cseweb.ucsd.edu/~jtma/pubs.html",

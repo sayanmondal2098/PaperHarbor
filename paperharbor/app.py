@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from paperharbor.downloader import PdfDownloader
+from paperharbor.local_files import LocalPdfIndex
 from paperharbor.providers.landing import LandingPageResolver, is_known_oa_host
 from paperharbor.models import CandidatePDF, DownloadResult, PaperStatus, Reference
 from paperharbor.namer import generate_filename, get_unique_destination_path
@@ -62,6 +63,7 @@ class PaperHarborApp:
         self.downloader = PdfDownloader()
         self.landing_resolver = LandingPageResolver(self.downloader.session)
         self.reporter = Reporter(output_path=report_path, dest_dir=self.dest_folder)
+        self.local_pdfs = LocalPdfIndex(self.dest_folder)
 
     def run(
         self,
@@ -227,6 +229,15 @@ class PaperHarborApp:
                     file_size_bytes=file_size,
                     notes="Skipped: Valid PDF already exists in destination folder."
                 ))
+                return
+
+        if self.skip_existing_dest:
+            existing = self.local_pdfs.find(ref)
+            if existing:
+                self.reporter.record(DownloadResult(reference=ref, status=PaperStatus.SKIPPED_ALREADY_IN_DEST,
+                    saved_filename=existing.name, saved_path=str(existing), file_size_bytes=existing.stat().st_size,
+                    notes="Recognized a manually saved PDF by its printed title and DOI evidence.",
+                    recovery_action=recovery_action("SKIPPED_ALREADY_IN_DEST")))
                 return
 
         logger.info("[SEARCH] %s (DOI: %s)", ref.title[:70], ref.clean_doi or "None")

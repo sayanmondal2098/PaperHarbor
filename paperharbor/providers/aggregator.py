@@ -143,7 +143,7 @@ class ProviderAggregator:
             add_candidates(self._search(self.semantic_scholar, reference))
 
         # 7. Check Crossref direct links
-        if not direct() and reference.clean_doi:
+        if not direct() and (reference.clean_doi or len(reference.title.strip()) >= 12):
             logger.debug(f"Querying Crossref provider for {reference.key}")
             add_candidates(self._search(self.crossref, reference))
 

@@ -24,7 +24,7 @@ class TestAuthorCopies(unittest.TestCase):
 
     def test_catalog_carries_evidence_and_exact_identifiers(self):
         for doi, entry in source_catalog().items():
-            self.assertTrue(doi.startswith("10.1145/"))
+            self.assertRegex(doi, r"^10\.\d{4,9}/")
             self.assertTrue(entry["title"])
             self.assertTrue(entry["source_page"].startswith("https://"))
             self.assertTrue(entry["verified_on"])

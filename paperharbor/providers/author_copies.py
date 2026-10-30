@@ -29,8 +29,8 @@ def author_copy_candidates(reference):
     if reference.title and not any(same_title(reference.title, title) for title in titles):
         return []
     return [
-        CandidatePDF(url=url, provider="Verified author copies",
-                     landing_page=record["source_page"], oa_status="green")
+        CandidatePDF(url=url, provider=record.get("provider", "Verified author copies"),
+                     landing_page=record["source_page"], oa_status=record.get("oa_status", "green"))
         for url in record["pdf_urls"]
     ]
 

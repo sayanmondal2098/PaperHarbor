@@ -58,7 +58,8 @@ def recovery_links(reference):
     if reference.clean_doi and reference.clean_doi.lower().startswith("10.1145/"):
         links.insert(0, {"label": "ACM Digital Library", "url": f"https://dl.acm.org/doi/{reference.clean_doi}"})
     for index, candidate in enumerate(author_copy_candidates(reference), start=1):
-        links.insert(index - 1, {"label": f"Author / conference PDF {index}", "url": candidate.url})
+        label = "MDPI official PDF" if candidate.provider == "MDPI official assets" else f"Author / conference PDF {index}"
+        links.insert(index - 1, {"label": label, "url": candidate.url})
     return links
 
 
@@ -71,7 +72,12 @@ def recovery_action(status, errors=""):
         return "PDF saved. Verify its title/version before citing."
     if status.startswith("SKIPPED"):
         return "Existing file or Zotero attachment retained."
-    if status != "OA_BLOCKED_MANUAL" and ("429" in errors or "503" in errors):
+    if "No matching Crossref title record" in errors:
+        return ("Crossref did not find a matching title. Verify the title, authors, and year, or supply a DOI / verified article URL. "
+                "Any rate-limited discovery services must also be retried after their wait interval.")
+    if status != "OA_BLOCKED_MANUAL" and ("429" in errors or "503" in errors) and not any(
+        token in errors for token in ("401", "403", "not a valid PDF", "202")
+    ):
         return "Service busy or rate limited. Wait and retry this entry later."
     if "ResearchGate" in errors:
         return ("Open the ResearchGate publication in your browser and complete normal sign-in if needed. "
@@ -82,6 +88,8 @@ def recovery_action(status, errors=""):
         return ("Open the article/repository link in your browser. Complete any normal sign-in or site interaction, "
                 "then save the PDF to the destination using the suggested filename. Alternatively paste a verified "
                 "author/repository PDF URL into the reference's alternate-link field and retry.")
+    if "429" in errors or "503" in errors:
+        return "Service busy or rate limited. Wait and retry this entry later."
     if status == "PAYWALLED_OR_OA_NOT_FOUND":
         return "Verify DOI/title, search for an author manuscript, or request the paper through your library or author."
     return "Inspect the attempt details, retry later, or use a verified repository PDF URL. Check destination permissions if saving failed."
@@ -95,7 +103,7 @@ def web_resource_kind(reference):
     host = (parsed.hostname or "").lower()
     if host == "archive.ics.uci.edu" and parsed.path.startswith("/dataset/"):
         return "Dataset"
-    if reference.item_type.lower() == "dataset" and not reference.clean_doi:
+    if reference.item_type.lower() == "dataset":
         return "Dataset"
     if ((host == "flower.ai" and parsed.path.startswith("/docs/"))
             or (host == "kafka.apache.org" and ("/operations/" in parsed.path or "/documentation" in parsed.path))):

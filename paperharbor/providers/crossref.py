@@ -43,6 +43,7 @@ class CrossrefProvider(BaseProvider):
                 match = next((item for item in message.get("items", [])
                     if same_title(reference.title, " ".join(item.get("title", [])))), None)
                 if not match:
+                    self.last_error = "No matching Crossref title record; verify the title, authors, year, or supply a DOI"
                     return []
                 message = match
                 doi = message.get("DOI")

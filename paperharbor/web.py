@@ -85,7 +85,8 @@ class JobState:
                         "attempts": r.attempts,
                         "action": r.recovery_action,
                         "suggested_filename": r.suggested_filename,
-                        "links": recovery_links(r.reference),
+                        "links": ([{"label": "Resolved article / repository", "url": r.publisher_url}]
+                                  if r.publisher_url and r.publisher_url != r.reference.publisher_url else []) + recovery_links(r.reference),
                         "auto_retry_count": r.auto_retry_count,
                         "auto_retry_url": r.auto_retry_url,
                     })

@@ -38,6 +38,16 @@ PaperHarbor turns a paper DOI or URL, Zotero library, BibTeX bibliography, or CS
 
 ## Features
 
+MDPI article pages, `/html`, `/notes`, and PDF URLs resolve to the canonical
+PDF endpoint. Advertised PDF metadata and article asset links on MDPI's
+`mdpi-res.com` host are supported; the reviewed source catalog also includes
+the official PDF for DOI `10.3390/e17042367`. Asset filenames are never guessed
+from a DOI. A publisher 403 can still require normal browser access.
+IEEE staging URLs also produce production-host candidates, and Elsevier PII
+pages produce ScienceDirect PDF candidates. These endpoints still enforce
+the publisher's access requirements. Crossref title matching is available
+when a reference has no DOI. Dataset references retain their web links.
+
 | Feature | What it provides |
 | --- | --- |
 | Multiple reference sources | Single-paper DOI/URL, local `zotero.sqlite`, CSL-JSON, BibTeX, Zotero Web API, or unresolved rows from a previous CSV report |
@@ -80,7 +90,9 @@ Each reference receives an outcome in the report, including references skipped b
 - An internet connection for provider searches and downloads.
 - A writable destination folder.
 
-Runtime dependencies are `requests>=2.28.0` and `beautifulsoup4>=4.11.0`; see [requirements.txt](requirements.txt). The web server uses Python's standard library. Its optional **Browse...** folder picker also requires `tkinter`; paths can be entered manually if it is unavailable.
+Runtime dependencies are `requests>=2.28.0`, `beautifulsoup4>=4.11.0`, and `pypdf[fonts]>=6.21.4`; see [requirements.txt](requirements.txt). The PDF font support helps identify manually saved files. The web server uses Python's standard library. Its optional **Browse...** folder picker also requires `tkinter`; paths can be entered manually if it is unavailable.
+
+Manually saved PDFs in the destination folder are recognized on retry when their printed title and DOI evidence match the reference. Older ACM PDFs can also match an exact numeric DOI filename together with the printed title. Existing files are retained under their original names. Unidentified, encrypted, or unreadable PDFs are left for manual review.
 
 Clone the repository:
 
