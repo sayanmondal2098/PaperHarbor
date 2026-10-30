@@ -48,6 +48,12 @@ pages produce ScienceDirect PDF candidates. These endpoints still enforce
 the publisher's access requirements. Crossref title matching is available
 when a reference has no DOI. Dataset references retain their web links.
 
+Springer article, PDF, and `/fulltext.html` URLs are recognized by DOI.
+Subscription-preview responses are recorded in attempt details, and public
+author copies are still tried. For DOI `10.1007/s13042-010-0001-0`, the reviewed
+catalog includes the authors' university-hosted manuscript, reported as
+`authorManuscript` rather than the publisher version.
+
 | Feature | What it provides |
 | --- | --- |
 | Multiple reference sources | Single-paper DOI/URL, local `zotero.sqlite`, CSL-JSON, BibTeX, Zotero Web API, or unresolved rows from a previous CSV report |
@@ -343,10 +349,39 @@ When an arXiv landing page explicitly marks a paper withdrawn, the run records *
 | Semantic Scholar | Looks up open-access PDF metadata using the DOI |
 | Crossref | Examines DOI metadata for full-text links |
 | Google Scholar | Automatically searches matching titles after other sources fail; downloads advertised PDFs and resolves matching article pages |
+| Live web search | Searches for public PDF and repository links without requiring an entry in the reviewed source catalog |
 | ResearchGate | Recognizes supplied publication/file URLs and extracts advertised full-text links; offers browser search/download/request guidance when unavailable |
 | Stored Zotero URL | Tries publisher PDF URL variants and landing-page link extraction |
 
 The aggregator uses conditional fallbacks. It first checks reviewed author copies and recognizes supplied ACM and ResearchGate links, prioritizes explicit arXiv DOIs, and uses Unpaywall and OpenAlex as early discovery sources. When initial downloads fail, it queries providers skipped by the first pass and inspects the publisher page. A successful early download avoids unnecessary searches.
+
+### Finding copies without `author_copies.json`
+
+The reviewed JSON catalog is optional. Missing or malformed catalog files do
+not stop discovery, downloads, recovery links, or retries. No new DOI mappings
+need to be added for ordinary use.
+
+After the metadata and Scholar sources, **Live web search** queries the quoted
+paper title with `filetype:pdf`. It uses DuckDuckGo HTML search by default, or
+Google web search through SerpApi when `SERPAPI_API_KEY` is configured. It
+discovers actual result URLs rather than guessing university domains or PDF
+filenames. Up to ten matching result links are considered, including repository
+pages whose advertised PDFs can be resolved automatically.
+
+For this layer, a result's title or snippet must contain the requested title.
+The downloaded PDF must also contain that title within the first 2,000
+characters extracted from its first page before it is saved. A failed match,
+unreadable PDF, or unrelated citation report is rejected; other sources are
+still tried. This check is retained through landing-page resolution and the
+single-paper retry. Scanned PDFs without extractable title text may remain
+unresolved. Alternate URLs are tried until a valid copy is saved for each
+reference, rather than saving duplicate versions from every link.
+
+Web searches are cached for the job and spaced by five seconds. Search access
+challenges, quota errors, and rate limits stop further requests to that web
+search service for the job and are recorded in the report. Accessible copies
+can be downloaded automatically; sign-in, publisher blocks, and missing public
+copies can still leave a reference unresolved.
 
 ### Automated Google Scholar PDF discovery
 

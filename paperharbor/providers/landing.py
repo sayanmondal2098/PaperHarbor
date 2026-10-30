@@ -40,9 +40,9 @@ def publisher_pdf_variants(url: str) -> List[str]:
         path = re.sub(r"/(full|abstract|pdf)$", "", parsed.path.rstrip("/"))
         variants.append(f"{parsed.scheme}://{parsed.netloc}{path}/pdf")
     elif host in ("link.springer.com", "link.springernature.com"):
-        match = re.search(r"/(?:article|content/pdf)/(10\..+?)(?:\.pdf)?$", parsed.path)
-        if match:
-            variants.append(f"https://link.springer.com/content/pdf/{match.group(1)}.pdf")
+        doi = doi_from_url(url)
+        if doi:
+            variants.append(f"https://link.springer.com/content/pdf/{doi}.pdf")
     elif host in ("dl.acm.org", "www.dl.acm.org"):
         match = re.search(r"/doi/(?:abs/|full/|fullHtml/|epdf/|pdf/)?(10\.[^\s]+)", unquote(parsed.path), re.I)
         if match:
@@ -134,6 +134,12 @@ class LandingPageResolver:
             if expected_doi and found and found != expected_doi.lower():
                 self.last_error = f"Rejected page with conflicting DOI {found}"
                 return []
+        if urlparse(resp.url).hostname in ("link.springer.com", "link.springernature.com"):
+            access = soup.find("meta", attrs={"name": re.compile(r"^access$", re.I)})
+            if ((access and (access.get("content") or "").casefold() == "no")
+                    or "preview of subscription content" in soup.get_text(" ").casefold()):
+                self.last_error = ("Springer subscription preview: publisher PDF requires subscription or institutional access; "
+                                   "automatic discovery will still try public author/repository copies")
         if is_researchgate_url(resp.url):
             title_meta = soup.find("meta", attrs={"name": re.compile(r"^citation_title$", re.I)})
             page_title = (title_meta.get("content") or "").strip() if title_meta else ""

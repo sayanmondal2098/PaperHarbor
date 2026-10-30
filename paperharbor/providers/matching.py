@@ -8,6 +8,10 @@ from urllib.parse import unquote, urlsplit
 def doi_from_url(url):
     parsed = urlsplit(url or "")
     host = (parsed.hostname or "").lower()
+    if host in ("link.springer.com", "link.springernature.com"):
+        match = re.fullmatch(r"/(?:article|content/pdf)/(10\.\d{4,9}/.+?)(?:\.pdf|/fulltext\.html)?/?",
+                             unquote(parsed.path), re.I)
+        return match.group(1).lower() if match else None
     if host not in ("doi.org", "www.doi.org", "dx.doi.org", "doi.acm.org", "dl.acm.org", "www.dl.acm.org", "portal.acm.org"):
         return None
     match = re.search(r"(10\.\d{4,9}/.+)", unquote(parsed.path), re.I)

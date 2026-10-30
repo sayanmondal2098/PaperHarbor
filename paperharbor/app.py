@@ -146,7 +146,8 @@ class PaperHarborApp:
             preferred = [preferred]
         candidates = [CandidatePDF(url=url, provider="User supplied") for url in preferred]
         candidates.extend(author_copy_candidates(ref))
-        previous = [CandidatePDF(url=a["url"], provider=a.get("provider") or "Previous candidate")
+        previous = [CandidatePDF(url=a["url"], provider=a.get("provider") or "Previous candidate",
+                                requires_identity_check=a.get("requires_identity_check", False))
                     for a in initial.attempts if a.get("stage") == "download" and a.get("url")]
         # Prefer repository/author URLs over a publisher URL that denied access.
         previous.sort(key=lambda c: urlsplit(c.url).hostname in ("dl.acm.org", "doi.org", "dx.doi.org"))
@@ -168,8 +169,9 @@ class PaperHarborApp:
         saved_retries = self.downloader.retries
         try:
             self.downloader.retries = 0
+            identity_options = {"expected_title": ref.title} if candidate.requires_identity_check else {}
             success, size, error = self.downloader.download_pdf(
-                candidate.url, target, referer=candidate.landing_page, expected_doi=ref.clean_doi)
+                candidate.url, target, referer=candidate.landing_page, expected_doi=ref.clean_doi, **identity_options)
         except Exception as exc:
             success, size, error = False, 0, f"{type(exc).__name__}: {exc}"
         finally:
@@ -257,7 +259,8 @@ class PaperHarborApp:
             if is_researchgate_url(candidate.url):
                 error = "ResearchGate: " + error
             attempts.append({"provider": candidate.provider, "url": candidate.url,
-                             "stage": stage, "error": error})
+                             "stage": stage, "error": error,
+                             "requires_identity_check": candidate.requires_identity_check})
             logger.info("[%s] %s: %s", stage.upper(), candidate.provider, error)
             if any(token in error for token in ("HTTP 401", "HTTP 403", "HTTP 202", "not a valid PDF")):
                 oa = candidate.oa_status in ("gold", "green", "hybrid", "bronze", "open")
@@ -278,10 +281,11 @@ class PaperHarborApp:
             if self.landing_resolver.last_error.startswith("Rejected page"):
                 log_attempt(candidate, "resolve", self.landing_resolver.last_error)
                 return []
-            if not urls:
+            if self.landing_resolver.last_error or not urls:
                 log_attempt(candidate, "resolve", self.landing_resolver.last_error or "No PDF link on article page")
             return [CandidatePDF(url=url, provider=candidate.provider, landing_page=candidate.url,
-                oa_status=candidate.oa_status, version=candidate.version) for url in urls]
+                oa_status=candidate.oa_status, version=candidate.version,
+                requires_identity_check=candidate.requires_identity_check) for url in urls]
 
         def record_withdrawal():
             if not withdrawal_note:
@@ -311,8 +315,9 @@ class PaperHarborApp:
                     continue
                 tried.add(candidate.url)
                 logger.info("[DOWNLOADING] %s: %s", candidate.provider, candidate.url)
+                identity_options = {"expected_title": ref.title} if candidate.requires_identity_check else {}
                 success, size_bytes, error = self.downloader.download_pdf(
-                    candidate.url, dest_file, referer=candidate.landing_page, expected_doi=ref.clean_doi)
+                    candidate.url, dest_file, referer=candidate.landing_page, expected_doi=ref.clean_doi, **identity_options)
                 if success:
                     attempts.append({"provider": candidate.provider, "url": candidate.url,
                                      "stage": "download", "error": "", "outcome": "downloaded"})
@@ -332,7 +337,8 @@ class PaperHarborApp:
                 # A stale PDF URL may have a current replacement on its article page.
                 if candidate.landing_page and candidate.landing_page != candidate.url:
                     pending.extend(resolve(CandidatePDF(url=candidate.landing_page,
-                        provider=candidate.provider, oa_status=candidate.oa_status, is_direct_pdf=False)))
+                        provider=candidate.provider, oa_status=candidate.oa_status, is_direct_pdf=False,
+                        requires_identity_check=candidate.requires_identity_check)))
                     if record_withdrawal():
                         return
 

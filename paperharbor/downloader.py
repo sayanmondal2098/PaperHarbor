@@ -33,7 +33,7 @@ class PdfDownloader:
             "Accept-Encoding": "gzip, deflate",
         })
 
-    def download_pdf(self, url, destination_path, min_bytes=1024, referer=None, expected_doi=None):
+    def download_pdf(self, url, destination_path, min_bytes=1024, referer=None, expected_doi=None, expected_title=None):
         """Retry transient failures only; never repeatedly hammer access-denied pages."""
         parsed = urlparse(url)
         if parsed.scheme not in ("https", "http") or not parsed.netloc:
@@ -41,7 +41,7 @@ class PdfDownloader:
         result = (False, 0, "No download attempted")
         for attempt in range(self.retries + 1):
             self.retry_after = None
-            result = self._download_once(url, destination_path, min_bytes, referer, expected_doi)
+            result = self._download_once(url, destination_path, min_bytes, referer, expected_doi, expected_title)
             if result[0]:
                 return result
             error = result[2] or "Unknown download error"
@@ -65,6 +65,7 @@ class PdfDownloader:
         min_bytes: int = 1024,
         referer: Optional[str] = None,
         expected_doi: Optional[str] = None,
+        expected_title: Optional[str] = None,
     ) -> Tuple[bool, int, Optional[str]]:
         """
         Downloads a PDF from url and saves it to destination_path.
@@ -123,6 +124,23 @@ class PdfDownloader:
                     if temp_file.exists():
                         temp_file.unlink()
                     return False, total_bytes, f"Downloaded file too small ({total_bytes} bytes), likely corrupted"
+
+            if expected_title:
+                # Search snippets can quote a cited work. A web-discovered PDF
+                # must identify the requested title on its own first page.
+                from paperharbor.local_files import normalized_text
+                from pypdf import PdfReader
+                try:
+                    with temp_file.open("rb") as handle:
+                        reader = PdfReader(handle)
+                        first_page = reader.pages[0].extract_text() if not reader.is_encrypted and reader.pages else ""
+                        title = normalized_text(expected_title)
+                        matches = bool(title) and title in normalized_text((first_page or "")[:2000])
+                except Exception:
+                    matches = False
+                if not matches:
+                    temp_file.unlink()
+                    return False, total_bytes, "Rejected web-search PDF: first-page title does not match or cannot be verified"
 
             # Atomic move from temp to destination
             shutil.move(str(temp_file), str(destination_path))

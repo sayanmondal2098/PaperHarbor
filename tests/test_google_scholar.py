@@ -140,7 +140,7 @@ class ScholarTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             app = PaperHarborApp(UploadedReferenceReader([self.ref]), Path(folder), request_delay=0)
             for name in ('author_copies', 'acm', 'researchgate', 'unpaywall', 'openalex',
-                         'europe_pmc', 'arxiv', 'semantic_scholar', 'crossref'):
+                         'europe_pmc', 'arxiv', 'semantic_scholar', 'crossref', 'web_search'):
                 getattr(app.aggregator, name).search = MagicMock(return_value=[])
             app.aggregator.google_scholar.session.get = MagicMock(return_value=self.response(self.results()))
             def download(url, path, **kwargs):

@@ -426,6 +426,10 @@ async function poll() {
       if (
         result.auto_retry_count &&
         result.auto_retry_url &&
+        !(result.attempts || []).some(
+          (attempt) =>
+            attempt.url === result.auto_retry_url && attempt.requires_identity_check,
+        ) &&
         library?.items.some((item) => item.key === result.key) &&
         !autoLinkedRetries.has(token)
       ) {

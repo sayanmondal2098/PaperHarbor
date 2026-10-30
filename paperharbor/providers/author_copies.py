@@ -16,7 +16,13 @@ from paperharbor.providers.matching import doi_from_url, same_title
 @lru_cache(maxsize=1)
 def source_catalog():
     path = Path(__file__).with_name("author_copies.json")
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        # Reviewed entries are optional hints. Live discovery must work without
+        # this file, including recovery links and the single-paper retry path.
+        return {}
 
 
 def author_copy_candidates(reference):
@@ -30,7 +36,8 @@ def author_copy_candidates(reference):
         return []
     return [
         CandidatePDF(url=url, provider=record.get("provider", "Verified author copies"),
-                     landing_page=record["source_page"], oa_status=record.get("oa_status", "green"))
+                     landing_page=record["source_page"], oa_status=record.get("oa_status", "green"),
+                     version=record.get("version"))
         for url in record["pdf_urls"]
     ]
 

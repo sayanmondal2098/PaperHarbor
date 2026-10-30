@@ -93,6 +93,7 @@ class CandidatePDF:
     oa_status: Optional[str] = None
     version: Optional[str] = None  # publishedVersion, acceptedVersion, submittedVersion
     is_direct_pdf: bool = True
+    requires_identity_check: bool = False
 
 
 @dataclass
