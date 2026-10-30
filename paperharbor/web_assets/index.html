@@ -64,28 +64,14 @@
                   type="text"
                   placeholder="Used if metadata cannot be loaded"
                 />
-                <details class="settings">
-                  <summary>ACM walkthrough</summary>
-                  <ol class="hint">
-                    <li>Copy the paper DOI or ACM article URL.</li>
-                    <li>Paste it above and click Load references.</li>
-                    <li>Select the paper and choose a destination folder.</li>
-                    <li>
-                      Start the download. Author copies and OA sources are tried
-                      automatically.
-                    </li>
-                    <li>
-                      If blocked, expand Attempt details. Paste a verified
-                      alternate PDF link beneath the reference or use the
-                      article's normal browser download.
-                    </li>
-                  </ol>
-                  <p class="hint">
-                    Article access and publisher automation rules determine
-                    availability. A valid DOI does not guarantee a downloadable
-                    PDF.
-                  </p>
-                </details>
+                <label class="check"
+                  ><input type="checkbox" id="auto_retry_once" checked />
+                  Auto-link &amp; retry once</label
+                >
+                <p class="hint">
+                  After a failed single-paper download, fill a suggested PDF
+                  link and try it once. Stops after that attempt.
+                </p>
               </div>
               <div id="f_sqlite" class="source-panel">
                 <label for="zotero_path"

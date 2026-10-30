@@ -175,6 +175,7 @@ Examples:
     single.add_argument("--doi", help="Download one paper by DOI (Zotero/export not required)")
     single.add_argument("--url", help="Download one paper by its article/PDF URL")
     parser.add_argument("--title", default="", help="Title for --doi/--url when metadata cannot be retrieved")
+    parser.add_argument("--no-auto-retry", action="store_true", help="Disable the one-time linked retry for single-paper input")
     parsed = parser.parse_args(args)
     if parsed.title and not (parsed.doi or parsed.url):
         parser.error("--title requires --doi or --url.")
@@ -247,6 +248,7 @@ def run_cli(args: Optional[list] = None) -> int:
         filename_template=parsed.template,
         report_path=Path(parsed.report) if parsed.report else None,
         pdf_overrides=overrides,
+        auto_retry_once=bool(parsed.doi or parsed.url) and not parsed.no_auto_retry,
     )
 
     try:

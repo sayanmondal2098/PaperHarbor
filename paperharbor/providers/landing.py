@@ -5,6 +5,7 @@ import re
 from typing import List
 from urllib.parse import urljoin, urlparse, parse_qs, unquote
 from paperharbor.providers.matching import doi_from_url, same_title
+from paperharbor.providers.researchgate import is_researchgate_url, researchgate_pdf_links
 
 import requests
 from bs4 import BeautifulSoup
@@ -100,6 +101,8 @@ class LandingPageResolver:
             return urls
         if resp.status_code != 200:
             self.last_error = f"HTTP {resp.status_code} while resolving article page"
+            if is_researchgate_url(landing_url):
+                self.last_error += "; ResearchGate may require browser sign-in or an author full-text request"
             urls += publisher_pdf_variants(resp.url)
             return _dedupe(urls)
         if "html" not in resp.headers.get("content-type", "").lower():
@@ -126,6 +129,17 @@ class LandingPageResolver:
             if expected_doi and found and found != expected_doi.lower():
                 self.last_error = f"Rejected page with conflicting DOI {found}"
                 return []
+        if is_researchgate_url(resp.url):
+            title_meta = soup.find("meta", attrs={"name": re.compile(r"^citation_title$", re.I)})
+            page_title = (title_meta.get("content") or "").strip() if title_meta else ""
+            if expected_title and page_title and not same_title(expected_title, page_title):
+                self.last_error = "Rejected ResearchGate page with a conflicting title"
+                return []
+            links = researchgate_pdf_links(soup, resp.url)
+            if not links:
+                self.last_error = ("ResearchGate page has no advertised public PDF; open it in your browser "
+                                   "to sign in, download an available full text, or request it from the authors")
+            return links
         for meta in soup.find_all("meta", attrs={"name": re.compile(r"^(citation_pdf_url|wkhealth_pdf_url|eprints.document_url)$", re.I)}):
             if meta.get("content"):
                 urls.append(urljoin(resp.url, meta["content"]))

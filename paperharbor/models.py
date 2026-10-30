@@ -110,3 +110,5 @@ class DownloadResult:
     attempts: List[dict] = field(default_factory=list)
     recovery_action: str = ""
     suggested_filename: Optional[str] = None
+    auto_retry_count: int = 0
+    auto_retry_url: Optional[str] = None

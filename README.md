@@ -8,7 +8,7 @@
 <p align="center">Created by <a href="https://github.com/sayanmondal2098">Sayan Mondal</a></p>
 <p align="center"><a href="https://sayanmondal2098.github.io">Personal website</a></p>
 
-PaperHarbor turns a Zotero library, BibTeX bibliography, or CSL-JSON export into an organized collection of available open-access PDFs. Browse references in the local web interface, select papers, and save them to a folder you choose, or use the command line for repeatable batches. Zotero is optional when importing a bibliography or retrying a CSV report.
+PaperHarbor turns a paper DOI or URL, Zotero library, BibTeX bibliography, or CSL-JSON export into an organized collection of available open-access PDFs. Browse references in the local web interface, select papers, and save them to a folder you choose, or use the command line for repeatable batches. Zotero is optional for single papers, bibliography imports, and CSV report retries.
 
 **Zotero supplies the references; your personal folder receives the downloads.** PaperHarbor does not attach downloaded files to Zotero or update its records. The local database reader queries a temporary copy of the database.
 
@@ -23,7 +23,6 @@ PaperHarbor turns a Zotero library, BibTeX bibliography, or CSL-JSON export into
 - [Command-line options](#command-line-options)
 - [Usage examples](#usage-examples)
 - [ACM Digital Library and other domains](#acm-digital-library-and-other-domains)
-- [ACM walkthrough](docs/ACM_WALKTHROUGH.md)
 - [PDF discovery](#pdf-discovery)
 - [Files and naming](#files-and-naming)
 - [CSV reports](#csv-reports)
@@ -40,10 +39,10 @@ PaperHarbor turns a Zotero library, BibTeX bibliography, or CSL-JSON export into
 
 | Feature | What it provides |
 | --- | --- |
-| Multiple reference sources | Local `zotero.sqlite`, CSL-JSON, BibTeX, Zotero Web API, or unresolved rows from a previous CSV report |
+| Multiple reference sources | Single-paper DOI/URL, local `zotero.sqlite`, CSL-JSON, BibTeX, Zotero Web API, or unresolved rows from a previous CSV report |
 | Personal and group libraries | API access using a user ID or a group ID |
 | Missing-PDF detection | Checks attachment metadata and skips items already marked as having PDFs by default |
-| Multiple discovery providers | Reviewed author copies, ACM Digital Library, Unpaywall, OpenAlex, arXiv, Europe PMC, Semantic Scholar, and Crossref |
+| Multiple discovery providers | Reviewed author copies, ACM Digital Library, ResearchGate links, Unpaywall, OpenAlex, arXiv, Europe PMC, Semantic Scholar, and Crossref |
 | Landing-page resolution | Attempts to extract PDF links from article pages and stored Zotero URLs |
 | Download checks | Looks for a `%PDF-` header in the first 1,024 bytes and rejects downloads smaller than 1,024 bytes |
 | Organized filenames | Configurable year, author, and title templates with filename sanitization |
@@ -56,7 +55,7 @@ PaperHarbor turns a Zotero library, BibTeX bibliography, or CSL-JSON export into
 ## How it works
 
 ```text
-Zotero database / BibTeX or CSL-JSON / Web API / CSV retry report
+Paper DOI or URL / Zotero / BibTeX or CSL-JSON / Web API / CSV report
                            |
                     Read reference metadata
                            |
@@ -76,7 +75,7 @@ Each reference receives an outcome in the report, including references skipped b
 ## Requirements and installation
 
 - **Python 3.8 or later.** The project does not currently declare a tested Python-version matrix.
-- A local Zotero database, supported bibliography file, previous PaperHarbor report, or credentials for a Zotero API library.
+- A paper DOI or URL, local Zotero database, supported bibliography file, previous PaperHarbor report, or credentials for a Zotero API library.
 - An internet connection for provider searches and downloads.
 - A writable destination folder.
 
@@ -115,7 +114,7 @@ For one paper, paste its DOI directly; Zotero is not required:
 python main.py --doi "10.1145/1557019.1557153" --dest-folder "D:\Research\Papers"
 ```
 
-For an article URL, use `--url` instead. Add `--title "Actual paper title"` if the metadata service is unavailable. The [ACM walkthrough](docs/ACM_WALKTHROUGH.md) covers single papers, bibliographies, diagnostics, and blocked downloads.
+For an article URL, use `--url` instead. Add `--title "Actual paper title"` if metadata cannot be loaded. ACM and ResearchGate links are supported; see [ACM Digital Library and other domains](#acm-digital-library-and-other-domains) for availability and retry behavior.
 
 
 Start with a small batch using your local Zotero library:
@@ -245,6 +244,7 @@ python main.py --help
 | `--doi` | One paper by DOI; no Zotero/export required | Unset |
 | `--url` | One article/PDF URL; mutually exclusive with `--doi` | Unset |
 | `--title` | Fallback title for `--doi` or `--url` | Retrieved from metadata |
+| `--no-auto-retry` | Disable the single-paper automatic linked retry | Retry enabled for single papers |
 | `--export-file` | Read a `.json`, `.bib`, or `.bibtex` export | Unset |
 | `--retry-report` | Retry failed/manual/error rows from a PaperHarbor CSV report | Unset |
 | `--retry-not-found` | Also include no-copy-found rows when using `--retry-report` | Disabled |
@@ -287,7 +287,9 @@ python main.py -d "D:\Research\Papers" --force-redownload --verbose
 
 ## ACM Digital Library and other domains
 
-Follow the [step-by-step ACM walkthrough](docs/ACM_WALKTHROUGH.md) for any paper DOI/URL. The web interface also includes a short guide under the Single paper source. Identifier support does not guarantee that a publisher will allow automated PDF retrieval.
+For one paper, choose **Single paper · DOI or URL** in the web interface, paste its identifier, load the reference, select it, and start the download. Enter its title if metadata retrieval fails. On the CLI, use `--doi` or `--url` with `--dest-folder`. Identifier support does not guarantee that a publisher will allow automated PDF retrieval.
+
+Single-paper downloads have **Auto-link & retry once** enabled by default. After an unresolved download, the app chooses a suggested author/repository or previously discovered PDF URL, fills the alternate-link field, and makes one extra request. It stops after that request; this extra attempt has transport retries disabled. Successful, skipped, withdrawn, and recognized web-resource outcomes are not retried. If no direct link is available, no URL is guessed. Uncheck the option in the web UI or pass `--no-auto-retry` on the CLI to disable it. Batch jobs and the manual batch-retry action do not automatically trigger this extra single-paper retry.
 
 The diagnostic helper inspects candidates without downloading:
 
@@ -307,6 +309,8 @@ Some author-hosted PDFs are absent from OA indexes even when they download publi
 
 Supported URL forms also include IEEE article/viewer URLs, OpenReview forum-to-PDF links, IACR ePrint links, HAL repository document links, repository download buttons, and same-host PDF.js viewers. Requests identify the downloader as PaperHarbor.
 
+**ResearchGate:** publication pages and verified PDF URLs are supported through single-paper input, bibliography records, and alternate links. Accessible pages yield advertised PDFs for the same publication; unrelated citations and related papers are excluded. Add the actual paper title if a page blocks metadata retrieval. Failed/manual results include a ResearchGate search link. In your browser, complete normal sign-in and use **Download full-text** when available, or **Request full-text** to ask the authors and wait for a response. Save an available PDF using the suggested filename, or paste a verified author/repository PDF URL into the reference's alternate-link field and retry. ResearchGate is not assumed to be universally open access, and PaperHarbor does not scrape its search results or automate author requests.
+
 Title searches use conservative normalized matching. A title-search result, publisher redirect, candidate DOI URL, or article `citation_doi` that contradicts the reference DOI is rejected. This reduces the risk of downloading a similarly titled but different paper. Review title-only matches and author manuscript versions before citing.
 
 Flower documentation, Kafka documentation, UCI dataset pages, and explicitly typed datasets are recorded as **`WEB_RESOURCE`** when recognized. Their links remain available; they are not described as paywalled PDFs. New reports retain `Original_URL` and `Item_Type` so future retries keep that context. Older reports with missing source URLs require the original bibliography or corrected metadata.
@@ -325,9 +329,10 @@ When an arXiv landing page explicitly marks a paper withdrawn, the run records *
 | Europe PMC | Searches for biomedical full-text candidates using the DOI |
 | Semantic Scholar | Looks up open-access PDF metadata using the DOI |
 | Crossref | Examines DOI metadata for full-text links |
+| ResearchGate | Recognizes supplied publication/file URLs and extracts advertised full-text links; offers browser search/download/request guidance when unavailable |
 | Stored Zotero URL | Tries publisher PDF URL variants and landing-page link extraction |
 
-The aggregator uses conditional fallbacks. It first recognizes ACM references, prioritizes explicit arXiv DOIs, and uses Unpaywall and OpenAlex as early discovery sources. When initial downloads fail, it queries providers skipped by the first pass and inspects the publisher page. A successful early download avoids unnecessary searches.
+The aggregator uses conditional fallbacks. It first checks reviewed author copies and recognizes supplied ACM and ResearchGate links, prioritizes explicit arXiv DOIs, and uses Unpaywall and OpenAlex as early discovery sources. When initial downloads fail, it queries providers skipped by the first pass and inspects the publisher page. A successful early download avoids unnecessary searches.
 
 Candidate URLs are deduplicated and direct PDF candidates are ordered before landing pages. Article pages are inspected for PDF links, and downloads are attempted until one succeeds. A failed search does not establish that a paper is paywalled: missing metadata or provider failures can also prevent discovery.
 
@@ -504,7 +509,7 @@ Install runtime dependencies, then run the existing suite from the repository ro
 python -m unittest discover -s tests -v
 ```
 
-The suite covers filename generation, export parsing, SQLite reading, ACM and other providers, DOI identity checks, download retries, web-resource/withdrawal handling, CSV report imports, HTTP endpoints, and integration workflows. Network interactions are mocked; passing tests do not establish live provider availability.
+The suite covers filename generation, export parsing, SQLite reading, ACM, ResearchGate, and other providers, DOI identity checks, download retries, web-resource/withdrawal handling, CSV report imports, HTTP endpoints, and integration workflows. Network interactions are mocked; passing tests do not establish live provider availability.
 
 Check launcher options with:
 

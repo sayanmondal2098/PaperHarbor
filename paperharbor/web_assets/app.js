@@ -16,6 +16,7 @@ let revision = 0,
 let pdfOverrides = {},
   retryAvailable = false,
   lastResults = "";
+let autoLinkedRetries = new Set();
 
 async function request(path, cfg) {
   const response = await fetch(
@@ -76,6 +77,7 @@ function invalidateLibrary() {
   loadedConfig = null;
   selection.clear();
   pdfOverrides = {};
+  autoLinkedRetries.clear();
   $("lib").hidden = true;
   $("empty_library").hidden = false;
   $("library_count").textContent = "0";
@@ -326,6 +328,9 @@ async function startDownload() {
     include_zotero_has_pdf: $("include_zotero_has_pdf").checked,
     force_redownload: $("force_redownload").checked,
     pdf_overrides: pdfOverrides,
+    auto_retry_once:
+      Boolean(loadedConfig.paper_identifier) &&
+      ($("auto_retry_once")?.checked ?? true),
   };
   starting = true;
   updateControls();
@@ -416,6 +421,27 @@ async function poll() {
       ? "CSV report saved to: " + state.report
       : "";
     $("results_wrap").hidden = !state.results.length;
+    for (const result of state.results) {
+      const token = result.key + "|" + result.auto_retry_url;
+      if (
+        result.auto_retry_count &&
+        result.auto_retry_url &&
+        library?.items.some((item) => item.key === result.key) &&
+        !autoLinkedRetries.has(token)
+      ) {
+        if (!pdfOverrides[result.key]) {
+          pdfOverrides[result.key] = result.auto_retry_url;
+          document.querySelectorAll("[data-override-key]").forEach((input) => {
+            if (input.dataset.overrideKey === result.key) {
+              input.value = result.auto_retry_url;
+              const details = input.closest("details");
+              if (details) details.open = true;
+            }
+          });
+        }
+        autoLinkedRetries.add(token);
+      }
+    }
     const resultSignature = JSON.stringify(state.results);
     if (resultSignature !== lastResults) {
       $("rows").innerHTML = state.results
@@ -449,6 +475,9 @@ async function poll() {
             '<div class="paper-meta">' +
             esc(result.action || "") +
             "</div>" +
+            (result.auto_retry_count
+              ? '<div class="paper-meta">Automatic linked retry: 1/1</div>'
+              : "") +
             (result.suggested_filename
               ? '<div class="paper-meta">Save as: ' +
                 esc(result.suggested_filename) +

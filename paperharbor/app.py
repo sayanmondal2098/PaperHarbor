@@ -14,6 +14,9 @@ from paperharbor.providers.aggregator import ProviderAggregator
 from paperharbor.reporter import Reporter
 from paperharbor.recovery import recovery_action, web_resource_kind
 from paperharbor.providers.matching import conflicts_with_doi
+from paperharbor.providers.author_copies import author_copy_candidates
+from paperharbor.providers.researchgate import is_researchgate_url
+from urllib.parse import urlsplit
 from paperharbor.zotero.reader_base import ZoteroReaderBase
 
 logger = logging.getLogger(__name__)
@@ -35,6 +38,7 @@ class PaperHarborApp:
         request_delay: float = 0.5,
         progress_callback: Optional[Callable[[int, int, Reference, str], None]] = None,
         pdf_overrides: Optional[dict] = None,
+        auto_retry_once: bool = False,
     ):
         self.reader = reader
         self.dest_folder = Path(dest_folder).resolve()
@@ -46,6 +50,7 @@ class PaperHarborApp:
         self.request_delay = request_delay
         self.progress_callback = progress_callback
         self.pdf_overrides = pdf_overrides or {}
+        self.auto_retry_once = auto_retry_once
         if not isinstance(self.pdf_overrides, dict):
             raise ValueError("Alternate PDF links must be a mapping of item keys/DOIs to URLs.")
         for value in self.pdf_overrides.values():
@@ -106,6 +111,8 @@ class PaperHarborApp:
                         notes=cached.notes + " Reused the same DOI outcome from this run; duplicate network requests were avoided."))
                 else:
                     self._process_single_reference(ref)
+                    if self.auto_retry_once and len(references) == 1 and self.reporter.results:
+                        self._retry_single_once(ref)
                     if cache_key and self.reporter.results and self.reporter.results[-1].reference is ref and self.reporter.results[-1].status in (
                         PaperStatus.DOWNLOADED, PaperStatus.DOWNLOAD_FAILED, PaperStatus.OA_BLOCKED_MANUAL,
                         PaperStatus.PAYWALLED_OR_OA_NOT_FOUND, PaperStatus.WITHDRAWN,
@@ -123,6 +130,62 @@ class PaperHarborApp:
 
         report_file = self.reporter.write_csv()
         return report_file
+
+    def _retry_single_once(self, ref):
+        """One extra request to a suggested PDF link, never a recursive job retry."""
+        initial = self.reporter.results[-1]
+        if initial.auto_retry_count or initial.status not in (
+            PaperStatus.DOWNLOAD_FAILED, PaperStatus.OA_BLOCKED_MANUAL,
+            PaperStatus.PAYWALLED_OR_OA_NOT_FOUND,
+        ):
+            return
+        preferred = self.pdf_overrides.get(ref.key) or self.pdf_overrides.get(ref.clean_doi) or []
+        if isinstance(preferred, str):
+            preferred = [preferred]
+        candidates = [CandidatePDF(url=url, provider="User supplied") for url in preferred]
+        candidates.extend(author_copy_candidates(ref))
+        previous = [CandidatePDF(url=a["url"], provider=a.get("provider") or "Previous candidate")
+                    for a in initial.attempts if a.get("stage") == "download" and a.get("url")]
+        # Prefer repository/author URLs over a publisher URL that denied access.
+        previous.sort(key=lambda c: urlsplit(c.url).hostname in ("dl.acm.org", "doi.org", "dx.doi.org"))
+        candidates.extend(previous)
+        wait_urls = {a.get("url") for a in initial.attempts
+                     if a.get("stage") == "download" and (
+                         "HTTP 429" in a.get("error", "") or "server requests a " in a.get("error", ""))}
+        candidate = next((c for c in candidates
+                          if c.url not in wait_urls and c.url.startswith(("https://", "http://"))
+                          and not conflicts_with_doi(ref, c.url)), None)
+        if not candidate:
+            initial.notes += " Automatic retry skipped: no direct PDF link is available."
+            return
+        initial.auto_retry_count = 1
+        initial.auto_retry_url = candidate.url
+        logger.info("[AUTO RETRY 1/1] Using %s: %s", candidate.provider, candidate.url)
+        filename = generate_filename(ref, template=self.filename_template, max_title_chars=self.max_title_chars)
+        target = get_unique_destination_path(self.dest_folder, filename, ref.clean_doi)
+        saved_retries = self.downloader.retries
+        try:
+            self.downloader.retries = 0
+            success, size, error = self.downloader.download_pdf(
+                candidate.url, target, referer=candidate.landing_page, expected_doi=ref.clean_doi)
+        except Exception as exc:
+            success, size, error = False, 0, f"{type(exc).__name__}: {exc}"
+        finally:
+            self.downloader.retries = saved_retries
+        attempts = initial.attempts + [{"provider": candidate.provider, "url": candidate.url,
+            "stage": "auto_retry", "retry_number": 1, "error": error or "",
+            "outcome": "downloaded" if success else "failed"}]
+        if success:
+            self.reporter.results[-1] = DownloadResult(
+                reference=ref, status=PaperStatus.DOWNLOADED, provider=candidate.provider,
+                pdf_url=candidate.url, saved_filename=target.name, saved_path=str(target),
+                file_size_bytes=size, publisher_url=initial.publisher_url, attempts=attempts,
+                notes="Automatic retry 1/1 succeeded. Initial outcome: " + initial.notes,
+                recovery_action=recovery_action("DOWNLOADED"), auto_retry_count=1,
+                auto_retry_url=candidate.url)
+        else:
+            initial.attempts = attempts
+            initial.notes += " Automatic retry 1/1 failed: " + (error or "Unknown download error")
 
     def _process_single_reference(self, ref: Reference):
         resource_kind = web_resource_kind(ref)
@@ -180,6 +243,8 @@ class PaperHarborApp:
         discovered = len(candidates)
 
         def log_attempt(candidate, stage, error):
+            if is_researchgate_url(candidate.url):
+                error = "ResearchGate: " + error
             attempts.append({"provider": candidate.provider, "url": candidate.url,
                              "stage": stage, "error": error})
             logger.info("[%s] %s: %s", stage.upper(), candidate.provider, error)

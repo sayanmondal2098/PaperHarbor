@@ -7,6 +7,7 @@ from urllib.parse import quote, urlsplit
 from paperharbor.models import Reference
 from paperharbor.zotero.reader_base import ZoteroReaderBase
 from paperharbor.providers.author_copies import author_copy_candidates
+from paperharbor.providers.researchgate import is_researchgate_url
 
 RETRY_STATUSES = {"DOWNLOAD_FAILED", "OA_BLOCKED_MANUAL", "ERROR"}
 
@@ -48,9 +49,12 @@ def recovery_links(reference):
     links = [
         {"label": "Search Scholar", "url": f"https://scholar.google.com/scholar?q={query}"},
         {"label": "Search OpenAlex", "url": f"https://openalex.org/works?search={quote(reference.title)}"},
+        {"label": "Search ResearchGate", "url": f"https://www.researchgate.net/search/publication?q={query}"},
     ]
     if reference.publisher_url:
         links.insert(0, {"label": "Publisher / repository", "url": reference.publisher_url})
+    if is_researchgate_url(reference.url):
+        links.insert(0, {"label": "ResearchGate publication", "url": reference.url})
     if reference.clean_doi and reference.clean_doi.lower().startswith("10.1145/"):
         links.insert(0, {"label": "ACM Digital Library", "url": f"https://dl.acm.org/doi/{reference.clean_doi}"})
     for index, candidate in enumerate(author_copy_candidates(reference), start=1):
@@ -69,6 +73,11 @@ def recovery_action(status, errors=""):
         return "Existing file or Zotero attachment retained."
     if status != "OA_BLOCKED_MANUAL" and ("429" in errors or "503" in errors):
         return "Service busy or rate limited. Wait and retry this entry later."
+    if "ResearchGate" in errors:
+        return ("Open the ResearchGate publication in your browser and complete normal sign-in if needed. "
+                "Use Download full-text when available, or Request full-text to ask the authors. "
+                "Save an available PDF using the suggested filename, or paste a verified PDF URL into "
+                "the alternate-link field and retry. A full-text request does not immediately provide a PDF.")
     if "401" in errors or "403" in errors or "not a valid PDF" in errors or "202" in errors:
         return ("Open the article/repository link in your browser. Complete any normal sign-in or site interaction, "
                 "then save the PDF to the destination using the suggested filename. Alternatively paste a verified "

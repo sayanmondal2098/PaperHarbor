@@ -7,6 +7,7 @@ import requests
 from paperharbor.models import CandidatePDF, Reference
 from paperharbor.providers.arxiv import ArxivProvider
 from paperharbor.providers.acm import AcmProvider
+from paperharbor.providers.researchgate import ResearchGateProvider
 from paperharbor.providers.author_copies import AuthorCopiesProvider
 from paperharbor.providers.matching import conflicts_with_doi
 from paperharbor.providers.landing import publisher_pdf_variants
@@ -36,6 +37,7 @@ class ProviderAggregator:
         self.semantic_scholar = SemanticScholarProvider(email=self.email, session=self.session)
         self.crossref = CrossrefProvider(email=self.email, session=self.session)
         self.acm = AcmProvider(email=self.email, session=self.session)
+        self.researchgate = ResearchGateProvider(email=self.email, session=self.session)
         self.author_copies = AuthorCopiesProvider(email=self.email, session=self.session)
         self._queried = set()
         self.errors = []
@@ -59,7 +61,7 @@ class ProviderAggregator:
     def find_fallback_candidates(self, reference):
         """After downloads fail, query every provider that the fast search skipped."""
         candidates = []
-        for provider in (self.author_copies, self.acm, self.unpaywall, self.openalex, self.europe_pmc, self.arxiv, self.semantic_scholar, self.crossref):
+        for provider in (self.author_copies, self.acm, self.researchgate, self.unpaywall, self.openalex, self.europe_pmc, self.arxiv, self.semantic_scholar, self.crossref):
             if provider.name not in self._queried:
                 candidates.extend(self._search(provider, reference))
         if reference.publisher_url:
@@ -97,6 +99,7 @@ class ProviderAggregator:
         verified_copies = self._search(self.author_copies, reference)
         add_candidates(verified_copies)
         add_candidates(self._search(self.acm, reference))
+        add_candidates(self._search(self.researchgate, reference))
         # An independently reviewed author copy does not need an index to mark
         # the publisher version OA. Try it before contacting metadata services.
         if verified_copies:

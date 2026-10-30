@@ -86,6 +86,8 @@ class JobState:
                         "action": r.recovery_action,
                         "suggested_filename": r.suggested_filename,
                         "links": recovery_links(r.reference),
+                        "auto_retry_count": r.auto_retry_count,
+                        "auto_retry_url": r.auto_retry_url,
                     })
             return {
                 "running": self.running, "done": self.done, "error": self.error,
@@ -192,6 +194,7 @@ def _run_job(cfg, reader=None):
             filename_template=cfg.get("template") or "{year}_{author}_{title}.pdf",
             progress_callback=progress,
             pdf_overrides=cfg.get("pdf_overrides"),
+            auto_retry_once=bool(cfg.get("paper_identifier")) and reader is None and bool(cfg.get("auto_retry_once", True)),
         )
         with STATE.lock:
             STATE.app = app
