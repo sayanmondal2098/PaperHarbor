@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from paperharbor.downloader import PdfDownloader
-from paperharbor.providers.landing import LandingPageResolver
+from paperharbor.providers.landing import LandingPageResolver, is_known_oa_host
 from paperharbor.models import CandidatePDF, DownloadResult, PaperStatus, Reference
 from paperharbor.namer import generate_filename, get_unique_destination_path
 from paperharbor.providers.aggregator import ProviderAggregator
@@ -190,7 +190,10 @@ class PaperHarborApp:
             logger.debug(f"[RETRY] Failed candidate {cand.url}: {last_error}")
 
         # Provider says open access but the site refuses automated downloads: give a manual link
-        oa_confirmed = any(c.oa_status and c.oa_status != "publisher" for c in candidates)
+        oa_confirmed = any(
+            (c.oa_status and c.oa_status != "publisher") or is_known_oa_host(c.landing_page or c.url)
+            for c in candidates
+        )
         if blocked_urls and oa_confirmed:
             manual = blocked_urls[0]
             logger.warning(f"[MANUAL] Open access but blocked for automation: '{ref.title[:50]}' -> {manual}")
