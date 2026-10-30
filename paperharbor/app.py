@@ -48,7 +48,8 @@ class PaperHarborApp:
     def run(
         self,
         collection_filter: Optional[str] = None,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        item_keys: Optional[List[str]] = None,
     ) -> Path:
         """
         Execute the full pipeline:
@@ -67,6 +68,11 @@ class PaperHarborApp:
 
         total_refs = len(references)
         logger.info(f"Loaded {total_refs} total references from Zotero.")
+
+        if item_keys is not None:
+            wanted = set(item_keys)
+            references = [r for r in references if r.key in wanted]
+            logger.info(f"Processing {len(references)} manually selected references.")
 
         if limit and limit > 0:
             references = references[:limit]

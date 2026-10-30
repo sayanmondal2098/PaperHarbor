@@ -161,3 +161,7 @@ To run the unit and integration tests:
 ```bash
 python -m unittest discover tests
 ```
+
+## Web UI
+
+Run `python web.py` (optionally `--port 8765 --no-browser`) and open http://127.0.0.1:8765/. The server binds to localhost only.

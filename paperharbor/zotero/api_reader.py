@@ -73,6 +73,8 @@ class ZoteroApiReader(ZoteroReaderBase):
                 break
             params["start"] += len(batch)
 
+        collection_names = self._fetch_collection_names()
+
         # Separate regular items and attachments
         regular_items = []
         attachments_by_parent: Dict[str, List[str]] = {}
@@ -141,9 +143,30 @@ class ZoteroApiReader(ZoteroReaderBase):
                 doi=doi or None,
                 url=url_field or None,
                 extra=extra or None,
+                collections=[collection_names[k] for k in data.get("collections", []) if k in collection_names],
                 has_zotero_pdf=has_pdf,
                 zotero_attachments=attachments
             )
+            if collection_filter and not any(collection_filter.lower() in c.lower() for c in ref.collections):
+                continue
             references.append(ref)
 
         return references
+
+    def _fetch_collection_names(self) -> Dict[str, str]:
+        """Map collection key -> name."""
+        names: Dict[str, str] = {}
+        start = 0
+        while True:
+            resp = self.session.get(
+                f"{self.endpoint_prefix}/collections",
+                params={"format": "json", "limit": 100, "start": start},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            batch = resp.json()
+            for c in batch:
+                names[c["key"]] = c.get("data", {}).get("name", "")
+            if len(batch) < 100:
+                return names
+            start += len(batch)
