@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">PaperHarbor</title>
+  <desc id="desc">A research paper forms the sail of a boat above teal harbor waves on a navy background.</desc>
+  <defs>
+    <linearGradient id="background" x1="24" y1="12" x2="216" y2="240" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#143754"/>
+      <stop offset="1" stop-color="#091C30"/>
+    </linearGradient>
+    <linearGradient id="water" x1="48" y1="165" x2="194" y2="205" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5EEAD4"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="224" height="224" rx="54" fill="url(#background)"/>
+  <circle cx="120" cy="114" r="83" stroke="#FFFFFF" stroke-opacity=".09" stroke-width="2"/>
+  <path d="M91 48H142L166 72V139H91V48Z" fill="#F0FDFA"/>
+  <path d="M142 48V72H166" fill="#99F6E4"/>
+  <path d="M106 87H148M106 101H148M106 115H132" stroke="#25728A" stroke-width="5" stroke-linecap="round"/>
+  <path d="M80 75V139H48L80 75Z" fill="#38BDF8" fill-opacity=".85"/>
+  <path d="M119 141V157" stroke="#F0FDFA" stroke-width="5" stroke-linecap="round"/>
+  <path d="M49 151H190L170 175H76L49 151Z" fill="#5EEAD4"/>
+  <path d="M43 184C56 175 67 175 80 184C93 193 104 193 117 184C130 175 141 175 154 184C167 193 179 193 196 182M62 202C75 193 86 193 99 202C112 211 123 211 136 202C149 193 160 193 173 202" stroke="url(#water)" stroke-width="6" stroke-linecap="round"/>
+</svg>
