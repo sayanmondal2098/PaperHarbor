@@ -1,4 +1,4 @@
-"""Aggregator for multi-provider Open Access paper search."""
+﻿"""Aggregator for multi-provider Open Access paper search."""
 
 import logging
 from typing import List, Optional, Tuple
@@ -6,6 +6,7 @@ import requests
 
 from paperharbor.models import CandidatePDF, Reference
 from paperharbor.providers.arxiv import ArxivProvider
+from paperharbor.providers.landing import publisher_pdf_variants
 from paperharbor.providers.crossref import CrossrefProvider
 from paperharbor.providers.europe_pmc import EuropePmcProvider
 from paperharbor.providers.openalex import OpenAlexProvider
@@ -51,6 +52,9 @@ class ProviderAggregator:
                     seen_urls.add(c.url)
                     candidates.append(c)
 
+        def direct():
+            return [c for c in candidates if c.is_direct_pdf]
+
         # 1. Check arXiv first if arXiv DOI or preprint
         if reference.doi and "arxiv" in reference.doi.lower():
             logger.debug(f"Querying arXiv provider for {reference.key}")
@@ -64,28 +68,37 @@ class ProviderAggregator:
             add_candidates(self.unpaywall.search(reference))
 
         # 3. Check OpenAlex (covers DOI + Title fallback + institutional repos)
-        if not candidates or len(candidates) < 2:
+        if len(direct()) < 2:
             logger.debug(f"Querying OpenAlex provider for {reference.key}")
             add_candidates(self.openalex.search(reference))
 
         # 4. Check Europe PMC (for biomedical / PMC works)
-        if not candidates and reference.clean_doi:
+        if not direct() and reference.clean_doi:
             logger.debug(f"Querying Europe PMC provider for {reference.key}")
             add_candidates(self.europe_pmc.search(reference))
 
         # 5. Check arXiv by title/metadata if still no candidates
-        if not candidates:
+        if not direct():
             logger.debug(f"Querying arXiv search for {reference.key}")
             add_candidates(self.arxiv.search(reference))
 
         # 6. Check Semantic Scholar
-        if not candidates and reference.clean_doi:
+        if not direct() and reference.clean_doi:
             logger.debug(f"Querying Semantic Scholar provider for {reference.key}")
             add_candidates(self.semantic_scholar.search(reference))
 
         # 7. Check Crossref direct links
-        if not candidates and reference.clean_doi:
+        if not direct() and reference.clean_doi:
             logger.debug(f"Querying Crossref provider for {reference.key}")
             add_candidates(self.crossref.search(reference))
 
+        # Last resort: the URL stored in Zotero (e.g. a Wiley /epdf/ viewer link) and its PDF form
+        if reference.url and reference.url.startswith("http"):
+            for u in publisher_pdf_variants(reference.url):
+                add_candidates([CandidatePDF(url=u, provider="Zotero URL", landing_page=reference.url, is_direct_pdf=True)])
+            add_candidates([CandidatePDF(url=reference.url, provider="Zotero URL", landing_page=reference.url, is_direct_pdf=False)])
+
+        # Direct PDFs first, landing pages after
+        candidates.sort(key=lambda c: not c.is_direct_pdf)
         return candidates, publisher_url
+

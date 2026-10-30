@@ -211,7 +211,7 @@ button:disabled{background:#999}
 progress{width:100%;height:18px}
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
 .s{padding:2px 6px;border-radius:4px;font-size:12px;white-space:nowrap}
-.DOWNLOADED{background:#d4f4dd}.PAYWALLED_OR_OA_NOT_FOUND{background:#fff0c2}.DOWNLOAD_FAILED{background:#fbd0d0}.ERROR{background:#fbd0d0}
+.DOWNLOADED{background:#d4f4dd}.PAYWALLED_OR_OA_NOT_FOUND{background:#fff0c2}.DOWNLOAD_FAILED{background:#fbd0d0}.OA_BLOCKED_MANUAL{background:#ffd9a8}.ERROR{background:#fbd0d0}
 pre{background:#111;color:#cfc;padding:10px;max-height:220px;overflow:auto;font-size:12px}
 .stats span{margin-right:16px;font-weight:600}
 </style></head><body>

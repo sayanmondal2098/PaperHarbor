@@ -152,4 +152,18 @@ class OpenAlexProvider(BaseProvider):
                         is_direct_pdf=True
                     ))
 
+        # 4. Landing-only OA locations
+        for loc in work.get("locations", []):
+            landing = loc.get("landing_page_url")
+            if loc.get("is_oa") and landing and not loc.get("pdf_url") and landing not in seen_urls:
+                seen_urls.add(landing)
+                candidates.append(CandidatePDF(
+                    url=landing,
+                    provider=self.name,
+                    landing_page=landing,
+                    oa_status=oa_status,
+                    version=loc.get("version"),
+                    is_direct_pdf=False
+                ))
+
         return candidates

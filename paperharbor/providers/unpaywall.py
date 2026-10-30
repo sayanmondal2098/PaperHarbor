@@ -81,6 +81,20 @@ class UnpaywallProvider(BaseProvider):
                         is_direct_pdf=True
                     ))
 
+            # 2. Landing-only OA locations (publisher/repository page without a direct PDF link)
+            for loc in data.get("oa_locations", []):
+                landing = loc.get("url_for_landing_page") or loc.get("url")
+                if landing and not loc.get("url_for_pdf") and landing not in seen_urls:
+                    seen_urls.add(landing)
+                    candidates.append(CandidatePDF(
+                        url=landing,
+                        provider=self.name,
+                        landing_page=landing,
+                        oa_status=data.get("oa_status"),
+                        version=loc.get("version"),
+                        is_direct_pdf=False
+                    ))
+
             return candidates
 
         except requests.RequestException as e:

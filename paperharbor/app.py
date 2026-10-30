@@ -1,4 +1,4 @@
-"""Main application engine orchestrating reference extraction, search, download, and reporting."""
+﻿"""Main application engine orchestrating reference extraction, search, download, and reporting."""
 
 import logging
 import time
@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from paperharbor.downloader import PdfDownloader
-from paperharbor.models import DownloadResult, PaperStatus, Reference
+from paperharbor.providers.landing import LandingPageResolver
+from paperharbor.models import CandidatePDF, DownloadResult, PaperStatus, Reference
 from paperharbor.namer import generate_filename, get_unique_destination_path
 from paperharbor.providers.aggregator import ProviderAggregator
 from paperharbor.reporter import Reporter
@@ -43,6 +44,7 @@ class PaperHarborApp:
 
         self.aggregator = ProviderAggregator(email=email)
         self.downloader = PdfDownloader()
+        self.landing_resolver = LandingPageResolver(self.downloader.session)
         self.reporter = Reporter(output_path=report_path, dest_dir=self.dest_folder)
 
     def run(
@@ -146,10 +148,28 @@ class PaperHarborApp:
         # Make sure destination path is unique if collision with different paper
         dest_file = get_unique_destination_path(self.dest_folder, desired_filename, ref.clean_doi)
 
+        attempts = []
+        tried = set()
         for cand in candidates:
+            if cand.is_direct_pdf:
+                attempts.append(cand)
+            else:
+                # Landing page: look for the actual PDF link on it
+                logger.info(f"[RESOLVE] Looking for PDF link on {cand.provider} landing page ({cand.url[:70]}...)")
+                for pdf_url in self.landing_resolver.resolve(cand.url):
+                    attempts.append(CandidatePDF(
+                        url=pdf_url, provider=cand.provider, landing_page=cand.url,
+                        oa_status=cand.oa_status, version=cand.version, is_direct_pdf=True,
+                    ))
+
+        blocked_urls = []
+        for cand in attempts:
+            if cand.url in tried:
+                continue
+            tried.add(cand.url)
             logger.info(f"[DOWNLOADING] Trying {cand.provider} link ({cand.url[:70]}...)")
             success, size_bytes, err = self.downloader.download_pdf(cand.url, dest_file)
-            
+
             if success:
                 logger.info(f"[SUCCESS] Saved to {dest_file.name} ({round(size_bytes/1024, 1)} KB) via {cand.provider}")
                 self.reporter.record(DownloadResult(
@@ -163,17 +183,30 @@ class PaperHarborApp:
                     publisher_url=publisher_url,
                     notes=f"Successfully downloaded via {cand.provider} ({cand.oa_status or 'OA'})."
                 ))
-                download_success = True
-                break
-            else:
-                last_error = err or "Unknown download error"
-                logger.debug(f"[RETRY] Failed candidate {cand.url}: {last_error}")
+                return
+            last_error = err or "Unknown download error"
+            if "HTTP 403" in last_error or "HTTP 401" in last_error or "not a valid PDF" in last_error:
+                blocked_urls.append(cand.landing_page or cand.url)
+            logger.debug(f"[RETRY] Failed candidate {cand.url}: {last_error}")
 
-        if not download_success:
-            logger.warning(f"[FAILED] All OA download links failed for '{ref.title[:50]}': {last_error}")
+        # Provider says open access but the site refuses automated downloads: give a manual link
+        oa_confirmed = any(c.oa_status and c.oa_status != "publisher" for c in candidates)
+        if blocked_urls and oa_confirmed:
+            manual = blocked_urls[0]
+            logger.warning(f"[MANUAL] Open access but blocked for automation: '{ref.title[:50]}' -> {manual}")
             self.reporter.record(DownloadResult(
                 reference=ref,
-                status=PaperStatus.DOWNLOAD_FAILED,
-                publisher_url=publisher_url,
-                notes=f"Found {len(candidates)} candidate URL(s) but download failed: {last_error}"
+                status=PaperStatus.OA_BLOCKED_MANUAL,
+                publisher_url=manual,
+                notes=f"Open-access copy exists but the site blocks automated downloads ({last_error}). "
+                      f"Open the link in your browser and save the PDF manually."
             ))
+            return
+
+        logger.warning(f"[FAILED] All OA download links failed for '{ref.title[:50]}': {last_error}")
+        self.reporter.record(DownloadResult(
+            reference=ref,
+            status=PaperStatus.DOWNLOAD_FAILED,
+            publisher_url=publisher_url,
+            notes=f"Found {len(candidates)} candidate URL(s) but download failed: {last_error}"
+        ))

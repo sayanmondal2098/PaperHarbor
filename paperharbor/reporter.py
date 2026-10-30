@@ -83,6 +83,7 @@ class Reporter:
             PaperStatus.SKIPPED_ALREADY_IN_DEST.value: 0,
             PaperStatus.PAYWALLED_OR_OA_NOT_FOUND.value: 0,
             PaperStatus.DOWNLOAD_FAILED.value: 0,
+            PaperStatus.OA_BLOCKED_MANUAL.value: 0,
             PaperStatus.ERROR.value: 0,
         }
 
