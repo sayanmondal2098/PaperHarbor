@@ -53,7 +53,7 @@ when a reference has no DOI. Dataset references retain their web links.
 | Multiple reference sources | Single-paper DOI/URL, local `zotero.sqlite`, CSL-JSON, BibTeX, Zotero Web API, or unresolved rows from a previous CSV report |
 | Personal and group libraries | API access using a user ID or a group ID |
 | Missing-PDF detection | Checks attachment metadata and skips items already marked as having PDFs by default |
-| Multiple discovery providers | Reviewed author copies, ACM Digital Library, ResearchGate links, Unpaywall, OpenAlex, arXiv, Europe PMC, Semantic Scholar, and Crossref |
+| Multiple discovery providers | Reviewed author copies, ACM Digital Library, ResearchGate links, Unpaywall, OpenAlex, arXiv, Europe PMC, Semantic Scholar, Crossref, and Google Scholar |
 | Landing-page resolution | Attempts to extract PDF links from article pages and stored Zotero URLs |
 | Download checks | Looks for a `%PDF-` header in the first 1,024 bytes and rejects downloads smaller than 1,024 bytes |
 | Organized filenames | Configurable year, author, and title templates with filename sanitization |
@@ -342,10 +342,46 @@ When an arXiv landing page explicitly marks a paper withdrawn, the run records *
 | Europe PMC | Searches for biomedical full-text candidates using the DOI |
 | Semantic Scholar | Looks up open-access PDF metadata using the DOI |
 | Crossref | Examines DOI metadata for full-text links |
+| Google Scholar | Automatically searches matching titles after other sources fail; downloads advertised PDFs and resolves matching article pages |
 | ResearchGate | Recognizes supplied publication/file URLs and extracts advertised full-text links; offers browser search/download/request guidance when unavailable |
 | Stored Zotero URL | Tries publisher PDF URL variants and landing-page link extraction |
 
 The aggregator uses conditional fallbacks. It first checks reviewed author copies and recognizes supplied ACM and ResearchGate links, prioritizes explicit arXiv DOIs, and uses Unpaywall and OpenAlex as early discovery sources. When initial downloads fail, it queries providers skipped by the first pass and inspects the publisher page. A successful early download avoids unnecessary searches.
+
+### Automated Google Scholar PDF discovery
+
+Google Scholar is an automatic fallback in both the web interface and CLI,
+including CSV retries. It searches a quoted article title (or the DOI when
+there is no title), accepts closely matching result titles, and prioritizes
+the result's public `[PDF]` links. Matching article/repository pages are also
+passed to the landing-page resolver. Found PDFs are downloaded, named, and
+reported through the normal pipeline; no copy/paste step is needed.
+Conflicting DOI links and unrelated result titles are rejected. This verifies
+the search result's identity; PDF byte checks do not establish every file's
+bibliographic identity.
+
+Direct searches need no extra package or key. They are spaced by 15 seconds
+and cached for the job. HTTP 429 pauses Scholar searches for at least 15 minutes
+(longer if the server requests it). An access challenge or HTTP 403 stops
+further Scholar requests for that job, with the reason recorded in the report.
+Google can block automated searches, so this mode cannot guarantee unattended
+access. See [Google Scholar search help](https://scholar.google.com/intl/en/scholar/help.html).
+
+For an optional API-backed Google Scholar search, set `SERPAPI_API_KEY` before
+starting PaperHarbor. It then uses SerpApi's `google_scholar` endpoint instead
+of requesting Scholar HTML directly. The API's account limits and pricing
+apply; PaperHarbor does not create an account or buy credits. See the
+[SerpApi Google Scholar documentation](https://serpapi.com/google-scholar-api).
+
+```powershell
+$env:SERPAPI_API_KEY = "your-api-key"
+python web.py
+```
+
+The key is sent only to `serpapi.com`, with redirects disabled, and is omitted
+from reported errors. Search results still need public, downloadable PDFs;
+publisher sign-in or access restrictions may prevent a download. Restart an
+already running PaperHarbor server after updating the code or environment.
 
 Candidate URLs are deduplicated and direct PDF candidates are ordered before landing pages. Article pages are inspected for PDF links, and downloads are attempted until one succeeds. A failed search does not establish that a paper is paywalled: missing metadata or provider failures can also prevent discovery.
 

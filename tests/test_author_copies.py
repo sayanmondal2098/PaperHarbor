@@ -74,7 +74,7 @@ class TestAuthorCopies(unittest.TestCase):
         first, _ = aggregator.find_candidates(reference)
         self.assertEqual(first[0].url, AUTHOR_PDF)
         for provider in (aggregator.unpaywall, aggregator.openalex, aggregator.europe_pmc,
-                         aggregator.arxiv, aggregator.semantic_scholar, aggregator.crossref):
+                         aggregator.arxiv, aggregator.semantic_scholar, aggregator.crossref, aggregator.google_scholar):
             provider.search = MagicMock(return_value=[])
         fallback = CandidatePDF(url="https://repo.edu/new.pdf", provider="Unpaywall", oa_status="green")
         aggregator.unpaywall.search.return_value = [fallback]

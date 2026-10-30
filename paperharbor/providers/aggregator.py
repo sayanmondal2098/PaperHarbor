@@ -12,6 +12,7 @@ from paperharbor.providers.author_copies import AuthorCopiesProvider
 from paperharbor.providers.matching import conflicts_with_doi
 from paperharbor.providers.landing import publisher_pdf_variants
 from paperharbor.providers.crossref import CrossrefProvider
+from paperharbor.providers.google_scholar import GoogleScholarProvider
 from paperharbor.providers.europe_pmc import EuropePmcProvider
 from paperharbor.providers.openalex import OpenAlexProvider
 from paperharbor.providers.semantic_scholar import SemanticScholarProvider
@@ -39,6 +40,7 @@ class ProviderAggregator:
         self.acm = AcmProvider(email=self.email, session=self.session)
         self.researchgate = ResearchGateProvider(email=self.email, session=self.session)
         self.author_copies = AuthorCopiesProvider(email=self.email, session=self.session)
+        self.google_scholar = GoogleScholarProvider(email=self.email)
         self._queried = set()
         self.errors = []
 
@@ -61,7 +63,7 @@ class ProviderAggregator:
     def find_fallback_candidates(self, reference):
         """After downloads fail, query every provider that the fast search skipped."""
         candidates = []
-        for provider in (self.author_copies, self.acm, self.researchgate, self.unpaywall, self.openalex, self.europe_pmc, self.arxiv, self.semantic_scholar, self.crossref):
+        for provider in (self.author_copies, self.acm, self.researchgate, self.unpaywall, self.openalex, self.europe_pmc, self.arxiv, self.semantic_scholar, self.crossref, self.google_scholar):
             if provider.name not in self._queried:
                 candidates.extend(self._search(provider, reference))
         if reference.publisher_url:

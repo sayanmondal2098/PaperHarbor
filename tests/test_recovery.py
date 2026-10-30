@@ -120,7 +120,7 @@ class TestProviderRecovery(unittest.TestCase):
         aggregator = ProviderAggregator()
         providers = [aggregator.openalex, aggregator.europe_pmc, aggregator.arxiv,
                      aggregator.semantic_scholar, aggregator.crossref,
-                     aggregator.author_copies, aggregator.acm, aggregator.unpaywall]
+                     aggregator.author_copies, aggregator.acm, aggregator.unpaywall, aggregator.google_scholar]
         for provider in providers:
             provider.search = MagicMock(return_value=[])
         aggregator._queried = {aggregator.openalex.name}
