@@ -147,7 +147,11 @@ class GoogleScholarProvider(BaseProvider):
 
     def _candidates(self, results, reference):
         candidates, seen = [], set()
+        if not isinstance(results, list):
+            raise ValueError("Invalid Scholar result list")
         for result in results[:5]:
+            if not isinstance(result, dict):
+                continue
             title = re.sub(r"^\[(?:PDF|HTML|BOOK|CITATION)\]\s*", "", result.get("title", ""), flags=re.I)
             landing = external_url(result.get("link"))
             if reference.title:
@@ -163,6 +167,8 @@ class GoogleScholarProvider(BaseProvider):
             if landing:
                 resources.append({"link": landing, "file_format": ""})
             for resource in resources:
+                if not isinstance(resource, dict):
+                    continue
                 url = external_url(resource.get("link"))
                 if not url or url in seen or conflicts_with_doi(reference, url):
                     continue

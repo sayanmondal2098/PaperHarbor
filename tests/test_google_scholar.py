@@ -116,6 +116,18 @@ class ScholarTests(unittest.TestCase):
         self.provider.search(Reference(key='empty'))
         self.provider.session.get.assert_called_once()
 
+    def test_unrecognized_html_is_not_treated_as_a_pdf(self):
+        self.provider.session.get = MagicMock(return_value=self.response('<html>Sign in to continue</html>'))
+        self.assertEqual(self.provider.search(self.ref), [])
+        self.assertIn('Unrecognized', self.provider.last_error)
+
+    def test_html_resource_is_resolved_as_an_article_page(self):
+        self.provider.session.get = MagicMock(return_value=self.response(
+            self.results(pdf='https://repository.edu/item/123').replace('[PDF] repository.edu', '[HTML] repository.edu')))
+        candidates = self.provider.search(self.ref)
+        self.assertEqual(candidates[0].url, 'https://repository.edu/item/123')
+        self.assertFalse(candidates[0].is_direct_pdf)
+
     def test_distinct_direct_searches_are_spaced(self):
         self.provider.session.get = MagicMock(return_value=self.response('<div id="gs_res_ccl_mid"></div>'))
         with patch('paperharbor.providers.google_scholar.time.monotonic', return_value=100), patch(
