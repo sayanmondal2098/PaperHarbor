@@ -84,10 +84,10 @@ class ArxivProvider(BaseProvider):
         # Clean title of special symbols
         clean_title = re.sub(r"[^\w\s]", " ", title).strip()
         encoded = urllib.parse.quote(f'ti:"{clean_title}"')
-        url = f"http://export.arxiv.org/api/query?search_query={encoded}&max_results=3"
+        url = f"https://export.arxiv.org/api/query?search_query={encoded}&max_results=3"
 
         try:
-            resp = self.session.get(url, timeout=12)
+            resp = self.get(url, timeout=12)
             if resp.status_code != 200:
                 return None
 

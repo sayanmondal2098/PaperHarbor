@@ -13,6 +13,9 @@ let revision = 0,
   loading = false,
   running = false,
   starting = false;
+let pdfOverrides = {},
+  retryAvailable = false,
+  lastResults = "";
 
 async function request(path, cfg) {
   const response = await fetch(
@@ -59,6 +62,8 @@ function updateControls() {
     $(id).disabled = running || starting || loading;
   }
   $("select_visible").disabled ||= !shownReferences().length;
+  $("retry_failed").hidden = !retryAvailable;
+  $("retry_failed").disabled = running || starting;
   document.querySelectorAll("#librows input").forEach((el) => {
     el.disabled = running || starting;
   });
@@ -70,6 +75,7 @@ function invalidateLibrary() {
   library = null;
   loadedConfig = null;
   selection.clear();
+  pdfOverrides = {};
   $("lib").hidden = true;
   $("empty_library").hidden = false;
   $("library_count").textContent = "0";
@@ -90,8 +96,14 @@ function sourceConfig() {
   switch ($("src").value) {
     case "upload":
       if (!upload)
-        throw new Error("Choose a .bib, .bibtex, or .json file first.");
-      return { upload_name: upload.name, upload_content: upload.content };
+        throw new Error(
+          "Choose a bibliography or PaperHarbor CSV report first.",
+        );
+      return {
+        upload_name: upload.name,
+        upload_content: upload.content,
+        retry_not_found: $("retry_not_found").checked,
+      };
     case "export":
       if (!$("export_file").value.trim())
         throw new Error("Enter an export file path.");
@@ -165,8 +177,10 @@ async function readUpload(file) {
   upload = null;
   const currentRevision = revision;
   try {
-    if (!/\.(bib|bibtex|json)$/i.test(file.name))
-      throw new Error("Choose a .bib, .bibtex, or .json file.");
+    if (!/\.(bib|bibtex|json|csv)$/i.test(file.name))
+      throw new Error(
+        "Choose a .bib, .bibtex, .json, or PaperHarbor .csv file.",
+      );
     if (file.size > 5 * 1024 * 1024)
       throw new Error("Choose a file smaller than 5 MB.");
     if (!file.size) throw new Error("The selected file is empty.");
@@ -235,7 +249,11 @@ function renderLibrary() {
             '</div><div class="paper-meta">' +
             esc(item.authors || "Unknown author") +
             (item.doi ? " · DOI: " + esc(item.doi) : "") +
-            "</div></td>" +
+            '</div><details class="alternate"><summary>Use another PDF link</summary><input type="url" data-override-key="' +
+            esc(item.key) +
+            '" aria-label="Alternate PDF URL" placeholder="https://repository.edu/paper.pdf" value="' +
+            esc(pdfOverrides[item.key] || "") +
+            '"></details></td>' +
             '<td class="year-cell">' +
             esc(item.year) +
             '</td><td><span class="badge ' +
@@ -297,6 +315,7 @@ async function startDownload() {
     template: $("template").value.trim(),
     include_zotero_has_pdf: $("include_zotero_has_pdf").checked,
     force_redownload: $("force_redownload").checked,
+    pdf_overrides: pdfOverrides,
   };
   starting = true;
   updateControls();
@@ -325,6 +344,11 @@ async function poll() {
   try {
     const state = await request("/api/status");
     running = state.running;
+    retryAvailable =
+      state.done &&
+      state.results.some((r) =>
+        ["DOWNLOAD_FAILED", "OA_BLOCKED_MANUAL", "ERROR"].includes(r.status),
+      );
     const completed = state.results.length;
     $("bar").max = state.total || 1;
     $("bar").value = completed;
@@ -376,34 +400,74 @@ async function poll() {
       ? "CSV report saved to: " + state.report
       : "";
     $("results_wrap").hidden = !state.results.length;
-    $("rows").innerHTML = state.results
-      .slice()
-      .reverse()
-      .map(
-        (result) =>
-          '<tr><td><span class="badge ' +
-          esc(result.status) +
-          '">' +
-          esc(STATUS_LABELS[result.status] || result.status) +
-          "</span></td>" +
-          '<td><div class="paper-title">' +
-          esc(result.title) +
-          '</div><div class="paper-meta">' +
-          esc(result.author) +
-          " · " +
-          esc(result.year) +
-          "</div></td>" +
-          '<td><div class="paper-title">' +
-          esc(result.file || result.provider || "—") +
-          "</div>" +
-          (/^https?:\/\//i.test(result.url)
-            ? '<a href="' +
-              esc(result.url) +
-              '" target="_blank" rel="noopener" class="paper-meta">Open source ↗</a>'
-            : "") +
-          "</td></tr>",
-      )
-      .join("");
+    const resultSignature = JSON.stringify(state.results);
+    if (resultSignature !== lastResults) {
+      $("rows").innerHTML = state.results
+        .slice()
+        .reverse()
+        .map(
+          (result) =>
+            '<tr><td><span class="badge ' +
+            esc(result.status) +
+            '">' +
+            esc(STATUS_LABELS[result.status] || result.status) +
+            "</span></td>" +
+            '<td><div class="paper-title">' +
+            esc(result.title) +
+            '</div><div class="paper-meta">' +
+            esc(result.author) +
+            " · " +
+            esc(result.year) +
+            "</div></td>" +
+            '<td><div class="paper-title">' +
+            esc(result.file || result.provider || "—") +
+            "</div>" +
+            (/^https?:\/\//i.test(result.url)
+              ? '<a href="' +
+                esc(result.url) +
+                '" target="_blank" rel="noopener" class="paper-meta">Open source ↗</a>'
+              : "") +
+            '<div class="paper-meta">' +
+            esc(result.action || "") +
+            "</div>" +
+            (result.suggested_filename
+              ? '<div class="paper-meta">Save as: ' +
+                esc(result.suggested_filename) +
+                "</div>"
+              : "") +
+            (result.links || [])
+              .filter((link) => /^https?:\/\//i.test(link.url))
+              .map(
+                (link) =>
+                  '<a class="recovery-link" target="_blank" rel="noopener" href="' +
+                  esc(link.url) +
+                  '">' +
+                  esc(link.label) +
+                  "</a>",
+              )
+              .join(" ") +
+            '<details class="attempt-details"><summary>Attempt details (' +
+            (result.attempts || []).length +
+            ")</summary><p>" +
+            esc(result.notes || "") +
+            "</p>" +
+            (result.attempts || [])
+              .map(
+                (attempt) =>
+                  '<div class="attempt"><strong>' +
+                  esc(attempt.provider) +
+                  "</strong><p>" +
+                  esc(attempt.error || attempt.outcome) +
+                  "</p><span>" +
+                  esc(attempt.url) +
+                  "</span></div>",
+              )
+              .join("") +
+            "</details></td></tr>",
+        )
+        .join("");
+      lastResults = resultSignature;
+    }
     const log = $("log"),
       nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
     log.textContent = state.logs.join("\n") || "No activity yet.";
@@ -429,6 +493,27 @@ $("connect").addEventListener("click", loadLibrary);
 $("bib_file").addEventListener("change", (event) =>
   readUpload(event.target.files[0]),
 );
+$("retry_not_found").addEventListener("change", loadLibrary);
+$("librows").addEventListener("input", (event) => {
+  const key = event.target.dataset.overrideKey;
+  if (!key) return;
+  const value = event.target.value.trim();
+  if (value) pdfOverrides[key] = value;
+  else delete pdfOverrides[key];
+});
+$("retry_failed").addEventListener("click", async () => {
+  starting = true;
+  updateControls();
+  try {
+    await request("/api/retry", { pdf_overrides: pdfOverrides });
+    running = true;
+  } catch (error) {
+    $("job_error").textContent = error.message;
+  } finally {
+    starting = false;
+    updateControls();
+  }
+});
 $("upload_shortcut").addEventListener("click", () => {
   $("src").value = "upload";
   sourceChanged();

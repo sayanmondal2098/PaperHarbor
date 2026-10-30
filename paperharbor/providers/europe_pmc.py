@@ -33,7 +33,7 @@ class EuropePmcProvider(BaseProvider):
         }
 
         try:
-            resp = self.session.get(url, params=params, timeout=12)
+            resp = self.get(url, params=params, timeout=12)
             if resp.status_code != 200:
                 return []
 

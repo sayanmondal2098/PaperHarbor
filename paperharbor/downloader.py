@@ -3,9 +3,10 @@
 import logging
 import os
 import shutil
-import tempfile
+import time
 from pathlib import Path
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 import requests
 
 logger = logging.getLogger(__name__)
@@ -20,24 +21,52 @@ DEFAULT_USER_AGENT = (
 class PdfDownloader:
     """Downloads PDF files with streaming, timeouts, and byte-level %PDF- verification."""
 
-    def __init__(self, timeout: int = 30, user_agent: Optional[str] = None):
+    def __init__(self, timeout: int = 30, user_agent: Optional[str] = None, retries: int = 2):
         self.timeout = timeout
+        self.retries = max(0, retries)
+        self.retry_after = None
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": user_agent or DEFAULT_USER_AGENT,
             "Accept": "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Encoding": "gzip, deflate",
         })
 
-    def download_pdf(
+    def download_pdf(self, url, destination_path, min_bytes=1024, referer=None):
+        """Retry transient failures only; never repeatedly hammer access-denied pages."""
+        parsed = urlparse(url)
+        if parsed.scheme not in ("https", "http") or not parsed.netloc:
+            return False, 0, "Unsupported PDF URL; use an http or https link."
+        result = (False, 0, "No download attempted")
+        for attempt in range(self.retries + 1):
+            self.retry_after = None
+            result = self._download_once(url, destination_path, min_bytes, referer)
+            if result[0]:
+                return result
+            error = result[2] or "Unknown download error"
+            transient = any(token in error for token in (
+                "HTTP 202", "HTTP 408", "HTTP 425", "HTTP 429", "HTTP 500",
+                "HTTP 502", "HTTP 503", "HTTP 504", "Network error", "timed out"
+            ))
+            if not transient or attempt >= self.retries:
+                return result
+            delay = self.retry_after if self.retry_after is not None else 2 ** attempt
+            if delay > 30:
+                return False, result[1], error + f"; server requests a {delay:g}s wait. Retry later."
+            logger.info("Transient download failure; retrying in %.1fs: %s", delay, error)
+            time.sleep(delay)
+        return result
+
+    def _download_once(
         self,
         url: str,
         destination_path: Path,
-        min_bytes: int = 1024
+        min_bytes: int = 1024,
+        referer: Optional[str] = None,
     ) -> Tuple[bool, int, Optional[str]]:
         """
         Downloads a PDF from url and saves it to destination_path.
-        
+
         Performs magic byte inspection (%PDF-) to guarantee the file is an actual PDF
         and not an HTML paywall login page or error banner.
 
@@ -51,23 +80,32 @@ class PdfDownloader:
 
         try:
             logger.debug(f"Attempting download from: {url}")
-            with self.session.get(url, stream=True, timeout=self.timeout, allow_redirects=True) as resp:
-                if resp.status_code != 200:
+            headers = {"Referer": referer} if referer else {}
+            with self.session.get(url, stream=True, timeout=self.timeout, allow_redirects=True, headers=headers) as resp:
+                retry_after = resp.headers.get("Retry-After")
+                if isinstance(retry_after, str) and retry_after.isdigit():
+                    self.retry_after = float(retry_after)
+                if resp.status_code not in (200, 202):
                     return False, 0, f"HTTP {resp.status_code} ({resp.reason})"
 
-                # Read first chunk to inspect header
                 chunk_iter = iter(resp.iter_content(chunk_size=8192))
-                try:
-                    first_chunk = next(chunk_iter)
-                except StopIteration:
+                prefix = []
+                prefix_size = 0
+                for chunk in chunk_iter:
+                    if chunk:
+                        prefix.append(chunk)
+                        prefix_size += len(chunk)
+                    if prefix_size >= 1024:
+                        break
+                first_chunk = b"".join(prefix)
+                if not first_chunk:
+                    if resp.status_code == 202:
+                        return False, 0, "HTTP 202 (Accepted): server has not supplied a PDF yet"
                     return False, 0, "Empty response body from server"
-
-                # Check for PDF magic bytes in the first 1024 bytes (some servers have UTF-8 BOM or leading comments)
-                header_slice = first_chunk[:1024]
-                if b"%PDF-" not in header_slice:
-                    # Often paywalled sites return HTML error page with status 200
-                    sample_text = header_slice[:100].decode("latin-1", errors="replace").replace("\n", " ")
-                    return False, 0, f"Response is not a valid PDF (header was: '{sample_text}...') - likely paywalled or login portal"
+                if b"%PDF-" not in first_chunk[:1024]:
+                    if resp.status_code == 202:
+                        return False, 0, "HTTP 202 (Accepted): server returned a processing/challenge page, not a PDF"
+                    return False, 0, "Response is not a valid PDF; an HTML viewer, sign-in, or anti-bot page was returned"
 
                 # Stream to temporary file
                 total_bytes = len(first_chunk)
@@ -94,7 +132,7 @@ class PdfDownloader:
         except requests.RequestException as e:
             if temp_file.exists():
                 temp_file.unlink()
-            return False, 0, f"Network error: {str(e)}"
+            return False, 0, f"Network error: {type(e).__name__}: {str(e) or 'connection interrupted'}"
         except Exception as e:
             if temp_file.exists():
                 temp_file.unlink()

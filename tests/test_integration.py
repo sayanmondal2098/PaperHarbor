@@ -81,7 +81,7 @@ class TestIntegration(unittest.TestCase):
         mock_find.side_effect = find_side_effect
 
         # Configure mock download_pdf
-        def download_side_effect(url, path):
+        def download_side_effect(url, path, **kwargs):
             Path(path).write_bytes(b"%PDF-1.7\nMock Content" + b"A" * 2000)
             return True, 2020, None
 
@@ -97,7 +97,8 @@ class TestIntegration(unittest.TestCase):
             request_delay=0
         )
 
-        report_file = app.run()
+        with patch.object(app.aggregator, "find_fallback_candidates", return_value=[]):
+            report_file = app.run()
 
         # 1. Check report file exists
         self.assertTrue(report_file.exists())

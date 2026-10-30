@@ -6,6 +6,7 @@
 <p align="center"><strong>A home for your research PDFs.</strong></p>
 <p align="center">Bulk open-access PDF discovery and downloading for Zotero libraries.</p>
 <p align="center">Created by <a href="https://github.com/sayanmondal2098">Sayan Mondal</a></p>
+<p align="center"><a href="https://sayanmondal2098.github.io">Personal website</a></p>
 
 PaperHarbor reads references from Zotero, finds papers without PDF attachments, searches scholarly sources, and saves available PDFs to a folder you choose. Use the command line for repeatable batches or the local web interface to browse your library and select individual papers.
 
@@ -24,6 +25,7 @@ PaperHarbor reads references from Zotero, finds papers without PDF attachments, 
 - [PDF discovery](#pdf-discovery)
 - [Files and naming](#files-and-naming)
 - [CSV reports](#csv-reports)
+- [Recovering failed downloads](#recovering-failed-downloads)
 - [Troubleshooting](#troubleshooting)
 - [Limitations and data handling](#limitations-and-data-handling)
 - [Project structure](#project-structure)
@@ -220,13 +222,16 @@ python main.py --help
 | `--force-redownload` | Bypass the existing-destination skip check | Disabled |
 | `--template` | Filename template using `{year}`, `{author}`, and `{title}` | `{year}_{author}_{title}.pdf` |
 | `--export-file` | Read a `.json`, `.bib`, or `.bibtex` export | Unset |
+| `--retry-report` | Retry failed/manual/error rows from a PaperHarbor CSV report | Unset |
+| `--retry-not-found` | Also include no-copy-found rows when using `--retry-report` | Disabled |
+| `--pdf-overrides` | JSON mapping item keys or DOIs to verified alternate PDF URLs | Unset |
 | `--api-key` | Zotero API key | Unset |
 | `--user-id` | Zotero personal-library user ID | Unset |
 | `--group-id` | Zotero group-library ID | Unset |
 | `-v`, `--verbose` | Enable debug logging | Disabled |
 | `-h`, `--help` | Show help and exit | — |
 
-Use your own contact email with `--email` when possible. Existing-file skipping checks the generated filename and a size greater than 1,024 bytes, rather than DOI matching or a fresh PDF header check.
+Use your own contact email with `--email` when possible. Existing-file skipping checks the generated filename, a size greater than 1,024 bytes, and a PDF header; it does not match files by DOI.
 
 ## Usage examples
 
@@ -300,7 +305,7 @@ Use only the three documented template placeholders. Keep destination paths reas
 
 ## CSV reports
 
-Each completed run writes `paperharbor_report_YYYYMMDD_HHMMSS.csv` to the destination by default. Reports use UTF-8 with a byte-order mark for spreadsheet compatibility. A custom path is available through `--report`; reusing that path replaces its previous report.
+Each completed run writes `paperharbor_report_YYYYMMDD_HHMMSS.csv` to the destination by default. Reports include per-URL attempt diagnostics, suggested filenames, and recovery actions. Reports use UTF-8 with a byte-order mark for spreadsheet compatibility. A custom path is available through `--report`; reusing that path replaces its previous report.
 
 | Column | Contents |
 | --- | --- |
@@ -324,13 +329,36 @@ Each completed run writes `paperharbor_report_YYYYMMDD_HHMMSS.csv` to the destin
 | --- | --- |
 | `DOWNLOADED` | A candidate passed the download checks and was saved |
 | `SKIPPED_ALREADY_IN_ZOTERO` | Attachment metadata indicates Zotero already has a PDF |
-| `SKIPPED_ALREADY_IN_DEST` | Expected filename exists and is larger than 1,024 bytes |
+| `SKIPPED_ALREADY_IN_DEST` | Expected filename exists, has a PDF header, and is larger than 1,024 bytes |
 | `PAYWALLED_OR_OA_NOT_FOUND` | No candidate located; check the landing page or reference metadata |
 | `DOWNLOAD_FAILED` | Candidates found, but none downloaded successfully; inspect `Notes` |
 | `OA_BLOCKED_MANUAL` | An apparent open-access copy blocked automation or returned non-PDF content; try the recorded browser link |
-| `ERROR` | Reserved status defined by the data model and counted by the reporter; unexpected exceptions may instead abort the run |
+| `ERROR` | Reserved status defined by the data model and counted by the reporter; per-reference exceptions are recorded and later references continue |
 
 The CLI prints a summary and report path. Pressing `Ctrl+C` during its processing loop writes a partial report of completed outcomes. Normal completion returns exit code `0` even if individual downloads fail; inspect the CSV. Initialization/fatal failures return `1`, and handled cancellation returns `130`.
+
+## Recovering failed downloads
+
+PaperHarbor now retries transient download failures (HTTP 202/408/425/429 and selected 5xx responses, timeouts, and network errors), with up to two retries and bounded backoff. Numeric `Retry-After` delays up to 30 seconds are honored; longer delays are reported for a later retry. HTTP 401/403 pages are not repeatedly retried. A 202 response is accepted only when its body passes the PDF checks.
+
+After the initial candidates fail, discovery queries remaining providers and inspects the publisher page. Landing-page extraction prioritizes article PDF metadata and excludes reference-list PDFs; this prevents the unrelated cited-report download found in the audited report. This improves matching but does not verify every PDF's bibliographic identity.
+
+In the web UI, upload a previous PaperHarbor `.csv` report to load only failed/manual/error rows. Optionally include no-copy-found rows. Paste a verified alternate PDF URL under **Use another PDF link** for a reference, or use **Retry failed / manual entries** after a job. Expand **Attempt details** to inspect provider names, attempted URLs, errors, and the suggested next action. Browser downloads can be saved using the displayed suggested filename.
+
+CLI report retry:
+
+```powershell
+python main.py --retry-report "previous_report.csv" -d "D:\Research\Papers"
+python main.py --retry-report "previous_report.csv" --retry-not-found -d "D:\Research\Papers" --pdf-overrides "recovery/verified_pdf_overrides.json"
+```
+
+An override JSON file maps item keys or DOIs to one http(s) URL or a list of URLs. Overrides are tried before discovered candidates, but normal existing-file skips still apply. Use `--force-redownload` when intentionally fetching another copy.
+
+New report fields are `Attempt_Count`, `Attempt_Log` (JSON), `Recovery_Action`, and `Suggested_Filename`. Provider errors are retained rather than being treated as proof that a paper is paywalled. Individual reference exceptions no longer stop the rest of a batch.
+
+Optional `OPENALEX_API_KEY` and `SEMANTIC_SCHOLAR_API_KEY` environment variables enable authenticated metadata requests. Keys are sent only to their respective provider hosts; restart the web server after setting them. See [OpenAlex authentication](https://help.openalex.org/api/authentication/) and [Semantic Scholar API documentation](https://api.semanticscholar.org/api-docs/snippets) for obtaining and using keys.
+
+See the [report audit and recovered-paper sources](recovery/REPORT_RECOVERY.md) for the nine failed/manual entries investigated on 30 October 2026, including a correction for an unrelated PDF in the original output.
 
 ## Troubleshooting
 
@@ -411,6 +439,7 @@ Bug reports and pull requests are welcome through the [GitHub repository](https:
 **Sayan Mondal**
 
 - GitHub: [@sayanmondal2098](https://github.com/sayanmondal2098)
+- Website: [sayanmondal2098.github.io](https://sayanmondal2098.github.io)
 - Project: [PaperHarbor](https://github.com/sayanmondal2098/PaperHarbor)
 
 ## License

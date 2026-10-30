@@ -7,9 +7,10 @@ import unittest
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from paperharbor import web
+from paperharbor.models import DownloadResult, Reference, PaperStatus
 
 
 BIB = """
@@ -65,7 +66,9 @@ class TestWebUpload(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, patch.object(web, "STATE", web.JobState()):
             cfg.update(dest_folder=folder, item_keys=[selected])
             with patch("paperharbor.providers.aggregator.ProviderAggregator.find_candidates",
-                       return_value=([], None)) as find:
+                       return_value=([], None)) as find, patch(
+                       "paperharbor.providers.aggregator.ProviderAggregator.find_fallback_candidates",
+                       return_value=[]):
                 web._run_job(cfg)
             self.assertTrue(web.STATE.done)
             self.assertEqual(web.STATE.error, "")
@@ -105,6 +108,30 @@ class TestWebHTTP(unittest.TestCase):
                 self.assertEqual(status, 200)
                 self.assertIn(mime, content_type)
                 self.assertTrue(body)
+
+    def test_retry_uses_failed_references_and_original_job_settings(self):
+        state = web.JobState()
+        state.config = {"dest_folder": "saved-folder", "limit": 1, "item_keys": ["done", "failed"]}
+        state.app = MagicMock()
+        state.app.reporter.results = [
+            DownloadResult(Reference(key="done"), PaperStatus.DOWNLOADED),
+            DownloadResult(Reference(key="failed"), PaperStatus.DOWNLOAD_FAILED),
+        ]
+        started = threading.Event()
+        captured = {}
+        def run(cfg, reader):
+            captured["cfg"] = cfg
+            captured["keys"] = [ref.key for ref in reader.get_references()]
+            started.set()
+        with patch.object(web, "STATE", state), patch.object(web, "_run_job", side_effect=run):
+            status, _, _ = self.request("POST", "/api/retry", '{"pdf_overrides":{"failed":"https://repo.edu/a.pdf"}}',
+                                       {"X-PaperHarbor": "1"})
+            self.assertEqual(status, 200)
+            self.assertTrue(started.wait(2))
+            self.assertEqual(captured["keys"], ["failed"])
+            self.assertEqual(captured["cfg"]["dest_folder"], "saved-folder")
+            self.assertNotIn("limit", captured["cfg"])
+            self.assertNotIn("item_keys", captured["cfg"])
 
     def test_upload_endpoint_and_request_validation(self):
         headers = {"X-PaperHarbor": "1", "Content-Type": "application/json"}

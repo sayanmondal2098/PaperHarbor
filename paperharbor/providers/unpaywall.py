@@ -30,7 +30,7 @@ class UnpaywallProvider(BaseProvider):
         params = {"email": self.email}
 
         try:
-            resp = self.session.get(url, params=params, timeout=15)
+            resp = self.get(url, params=params, timeout=15)
             if resp.status_code == 404:
                 logger.debug(f"[Unpaywall] DOI not found in database: {doi}")
                 return []
@@ -66,7 +66,7 @@ class UnpaywallProvider(BaseProvider):
                     ))
 
             # 2. Check all oa_locations for fallbacks
-            for loc in data.get("oa_locations", []):
+            for loc in ([best] if best else []) + data.get("oa_locations", []):
                 pdf_url = loc.get("url_for_pdf")
                 landing = loc.get("url_for_landing_page") or loc.get("url")
                 version = loc.get("version")
@@ -82,7 +82,7 @@ class UnpaywallProvider(BaseProvider):
                     ))
 
             # 2. Landing-only OA locations (publisher/repository page without a direct PDF link)
-            for loc in data.get("oa_locations", []):
+            for loc in ([best] if best else []) + data.get("oa_locations", []):
                 landing = loc.get("url_for_landing_page") or loc.get("url")
                 if landing and not loc.get("url_for_pdf") and landing not in seen_urls:
                     seen_urls.add(landing)

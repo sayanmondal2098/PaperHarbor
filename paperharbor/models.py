@@ -105,3 +105,6 @@ class DownloadResult:
     file_size_bytes: int = 0
     publisher_url: Optional[str] = None
     notes: str = ""
+    attempts: List[dict] = field(default_factory=list)
+    recovery_action: str = ""
+    suggested_filename: Optional[str] = None

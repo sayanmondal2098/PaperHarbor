@@ -25,7 +25,7 @@ class OpenAlexProvider(BaseProvider):
 
     def search(self, reference: Reference) -> List[CandidatePDF]:
         candidates: List[CandidatePDF] = []
-        
+
         # 1. Try search by DOI first
         if reference.clean_doi:
             candidates = self._search_by_doi(reference.clean_doi)
@@ -43,7 +43,7 @@ class OpenAlexProvider(BaseProvider):
         params = {"mailto": self.email}
 
         try:
-            resp = self.session.get(url, params=params, timeout=15)
+            resp = self.get(url, params=params, timeout=15)
             if resp.status_code == 404:
                 return []
             if resp.status_code != 200:
@@ -64,7 +64,7 @@ class OpenAlexProvider(BaseProvider):
         params = {"mailto": self.email}
 
         try:
-            resp = self.session.get(url, params=params, timeout=15)
+            resp = self.get(url, params=params, timeout=15)
             if resp.status_code != 200:
                 return []
 
@@ -97,7 +97,7 @@ class OpenAlexProvider(BaseProvider):
     def _extract_candidates_from_work(self, work: dict) -> List[CandidatePDF]:
         oa_info = work.get("open_access", {})
         oa_status = oa_info.get("oa_status")
-        
+
         candidates: List[CandidatePDF] = []
         seen_urls = set()
 
@@ -136,7 +136,9 @@ class OpenAlexProvider(BaseProvider):
                 ))
 
         # 3. All locations
-        for loc in work.get("locations", []):
+        for loc in [work.get("best_oa_location"), work.get("primary_location")] + work.get("locations", []):
+            if not loc:
+                continue
             if loc.get("is_oa"):
                 pdf_url = loc.get("pdf_url")
                 landing = loc.get("landing_page_url")
@@ -153,9 +155,11 @@ class OpenAlexProvider(BaseProvider):
                     ))
 
         # 4. Landing-only OA locations
-        for loc in work.get("locations", []):
+        for loc in [work.get("best_oa_location"), work.get("primary_location")] + work.get("locations", []):
+            if not loc:
+                continue
             landing = loc.get("landing_page_url")
-            if loc.get("is_oa") and landing and not loc.get("pdf_url") and landing not in seen_urls:
+            if (loc.get("is_oa") or loc is work.get("best_oa_location")) and landing and not loc.get("pdf_url") and landing not in seen_urls:
                 seen_urls.add(landing)
                 candidates.append(CandidatePDF(
                     url=landing,

@@ -819,3 +819,41 @@ footer a {
     max-height: 450px;
   }
 }
+
+.alternate {
+  margin-top: 8px;
+}
+.alternate summary,
+.attempt-details summary {
+  font-size: 10px;
+}
+.alternate input {
+  width: 100%;
+  margin-top: 7px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 11px;
+}
+.recovery-link {
+  display: inline-block;
+  font-size: 10px;
+  margin: 7px 8px 5px 0;
+}
+.attempt-details {
+  font-size: 11px;
+  margin-top: 8px;
+  max-width: 400px;
+  overflow-wrap: anywhere;
+}
+.attempt {
+  border-top: 1px solid var(--line);
+  padding: 8px 0;
+}
+.attempt p {
+  margin: 4px 0;
+}
+.attempt span {
+  font-size: 10px;
+  color: var(--muted);
+}

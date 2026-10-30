@@ -11,6 +11,7 @@ from paperharbor.models import CandidatePDF, DownloadResult, PaperStatus, Refere
 from paperharbor.namer import generate_filename, get_unique_destination_path
 from paperharbor.providers.aggregator import ProviderAggregator
 from paperharbor.reporter import Reporter
+from paperharbor.recovery import recovery_action
 from paperharbor.zotero.reader_base import ZoteroReaderBase
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ class PaperHarborApp:
         report_path: Optional[Path] = None,
         request_delay: float = 0.5,
         progress_callback: Optional[Callable[[int, int, Reference, str], None]] = None,
+        pdf_overrides: Optional[dict] = None,
     ):
         self.reader = reader
         self.dest_folder = Path(dest_folder).resolve()
@@ -41,6 +43,13 @@ class PaperHarborApp:
         self.max_title_chars = max_title_chars
         self.request_delay = request_delay
         self.progress_callback = progress_callback
+        self.pdf_overrides = pdf_overrides or {}
+        if not isinstance(self.pdf_overrides, dict):
+            raise ValueError("Alternate PDF links must be a mapping of item keys/DOIs to URLs.")
+        for value in self.pdf_overrides.values():
+            urls = [value] if isinstance(value, str) else value
+            if not isinstance(urls, list) or any(not isinstance(url, str) or not url.startswith(("http://", "https://")) for url in urls):
+                raise ValueError("Use http(s) URLs for alternate PDF links.")
 
         self.aggregator = ProviderAggregator(email=email)
         self.downloader = PdfDownloader()
@@ -84,7 +93,13 @@ class PaperHarborApp:
             if self.progress_callback:
                 self.progress_callback(idx, len(references), ref, "Processing...")
 
-            self._process_single_reference(ref)
+            try:
+                self._process_single_reference(ref)
+            except Exception as exc:
+                logger.exception("Reference failed; continuing with the next paper: %s", ref.key)
+                self.reporter.record(DownloadResult(reference=ref, status=PaperStatus.ERROR,
+                    publisher_url=ref.publisher_url, notes=f"{type(exc).__name__}: {exc}",
+                    recovery_action=recovery_action("ERROR")))
 
             # Polite delay between internet requests
             if self.request_delay > 0:
@@ -115,7 +130,9 @@ class PaperHarborApp:
         # 3. Check if file already exists in destination folder
         if self.skip_existing_dest and target_path.exists():
             file_size = target_path.stat().st_size
-            if file_size > 1024:
+            with target_path.open("rb") as existing:
+                valid_header = b"%PDF-" in existing.read(1024)
+            if file_size > 1024 and valid_header:
                 logger.info(f"[SKIP] '{desired_filename}' already exists in personal destination folder.")
                 self.reporter.record(DownloadResult(
                     reference=ref,
@@ -127,89 +144,88 @@ class PaperHarborApp:
                 ))
                 return
 
-        # 4. Search internet for Open Access candidates
-        logger.info(f"[SEARCH] Searching Open Access for: '{ref.title[:60]}' (DOI: {ref.clean_doi or 'None'})")
+        logger.info("[SEARCH] %s (DOI: %s)", ref.title[:70], ref.clean_doi or "None")
         candidates, publisher_url = self.aggregator.find_candidates(ref)
-
-        if not candidates:
-            logger.info(f"[PAYWALL/NOT FOUND] No legal OA PDF found for: '{ref.title[:50]}'")
-            self.reporter.record(DownloadResult(
-                reference=ref,
-                status=PaperStatus.PAYWALLED_OR_OA_NOT_FOUND,
-                publisher_url=publisher_url,
-                notes="No legal Open Access PDF located. Paper is likely paywalled."
-            ))
-            return
-
-        # 5. Attempt download waterfall
-        download_success = False
-        last_error = ""
-
-        # Make sure destination path is unique if collision with different paper
+        preferred = self.pdf_overrides.get(ref.key) or self.pdf_overrides.get(ref.clean_doi) or []
+        if isinstance(preferred, str):
+            preferred = [preferred]
+        candidates = [CandidatePDF(url=url, provider="User supplied", landing_page=url)
+                      for url in preferred] + candidates
         dest_file = get_unique_destination_path(self.dest_folder, desired_filename, ref.clean_doi)
+        attempts, blocked = [], []
+        tried, resolved = set(), set()
+        discovered = len(candidates)
 
-        attempts = []
-        tried = set()
-        for cand in candidates:
-            if cand.is_direct_pdf:
-                attempts.append(cand)
-            else:
-                # Landing page: look for the actual PDF link on it
-                logger.info(f"[RESOLVE] Looking for PDF link on {cand.provider} landing page ({cand.url[:70]}...)")
-                for pdf_url in self.landing_resolver.resolve(cand.url):
-                    attempts.append(CandidatePDF(
-                        url=pdf_url, provider=cand.provider, landing_page=cand.url,
-                        oa_status=cand.oa_status, version=cand.version, is_direct_pdf=True,
-                    ))
+        def log_attempt(candidate, stage, error):
+            attempts.append({"provider": candidate.provider, "url": candidate.url,
+                             "stage": stage, "error": error})
+            logger.info("[%s] %s: %s", stage.upper(), candidate.provider, error)
+            if any(token in error for token in ("HTTP 401", "HTTP 403", "HTTP 202", "not a valid PDF")):
+                oa = candidate.oa_status in ("gold", "green", "hybrid", "bronze", "open")
+                if oa or is_known_oa_host(candidate.url) or is_known_oa_host(candidate.landing_page or ""):
+                    blocked.append(candidate.landing_page or candidate.url)
 
-        blocked_urls = []
-        for cand in attempts:
-            if cand.url in tried:
-                continue
-            tried.add(cand.url)
-            logger.info(f"[DOWNLOADING] Trying {cand.provider} link ({cand.url[:70]}...)")
-            success, size_bytes, err = self.downloader.download_pdf(cand.url, dest_file)
+        def resolve(candidate):
+            if candidate.url in resolved:
+                return []
+            resolved.add(candidate.url)
+            urls = self.landing_resolver.resolve(candidate.url)
+            if not urls:
+                log_attempt(candidate, "resolve", self.landing_resolver.last_error or "No PDF link on article page")
+            return [CandidatePDF(url=url, provider=candidate.provider, landing_page=candidate.url,
+                oa_status=candidate.oa_status, version=candidate.version) for url in urls]
 
-            if success:
-                logger.info(f"[SUCCESS] Saved to {dest_file.name} ({round(size_bytes/1024, 1)} KB) via {cand.provider}")
-                self.reporter.record(DownloadResult(
-                    reference=ref,
-                    status=PaperStatus.DOWNLOADED,
-                    provider=cand.provider,
-                    pdf_url=cand.url,
-                    saved_filename=dest_file.name,
-                    saved_path=str(dest_file),
-                    file_size_bytes=size_bytes,
-                    publisher_url=publisher_url,
-                    notes=f"Successfully downloaded via {cand.provider} ({cand.oa_status or 'OA'})."
-                ))
-                return
-            last_error = err or "Unknown download error"
-            if "HTTP 403" in last_error or "HTTP 401" in last_error or "not a valid PDF" in last_error:
-                blocked_urls.append(cand.landing_page or cand.url)
-            logger.debug(f"[RETRY] Failed candidate {cand.url}: {last_error}")
+        for phase in range(2):
+            if phase:
+                logger.info("[FALLBACK] Trying remaining providers and publisher metadata for %s", ref.key)
+                candidates = self.aggregator.find_fallback_candidates(ref)
+                discovered += len(candidates)
+            pending = list(candidates)
+            while pending:
+                candidate = pending.pop(0)
+                if not candidate.is_direct_pdf:
+                    pending.extend(resolve(candidate))
+                    continue
+                if candidate.url in tried:
+                    continue
+                tried.add(candidate.url)
+                logger.info("[DOWNLOADING] %s: %s", candidate.provider, candidate.url)
+                success, size_bytes, error = self.downloader.download_pdf(
+                    candidate.url, dest_file, referer=candidate.landing_page)
+                if success:
+                    attempts.append({"provider": candidate.provider, "url": candidate.url,
+                                     "stage": "download", "error": "", "outcome": "downloaded"})
+                    self.reporter.record(DownloadResult(reference=ref, status=PaperStatus.DOWNLOADED,
+                        provider=candidate.provider, pdf_url=candidate.url, saved_filename=dest_file.name,
+                        saved_path=str(dest_file), file_size_bytes=size_bytes, publisher_url=publisher_url,
+                        notes=f"Downloaded via {candidate.provider} ({candidate.version or candidate.oa_status or 'version unspecified'}).",
+                        attempts=attempts, recovery_action=recovery_action("DOWNLOADED")))
+                    return
+                error = error or "Unknown download error"
+                log_attempt(candidate, "download", error)
+                # A provider's 'PDF URL' can actually be a viewer page. Inspect it once.
+                if "not a valid PDF" in error:
+                    pending.extend(resolve(candidate))
+                # A stale PDF URL may have a current replacement on its article page.
+                if candidate.landing_page and candidate.landing_page != candidate.url:
+                    pending.extend(resolve(CandidatePDF(url=candidate.landing_page,
+                        provider=candidate.provider, oa_status=candidate.oa_status, is_direct_pdf=False)))
 
-        # Provider says open access but the site refuses automated downloads: give a manual link
-        oa_confirmed = any(
-            (c.oa_status and c.oa_status != "publisher") or is_known_oa_host(c.landing_page or c.url)
-            for c in candidates
-        )
-        if blocked_urls and oa_confirmed:
-            manual = blocked_urls[0]
-            logger.warning(f"[MANUAL] Open access but blocked for automation: '{ref.title[:50]}' -> {manual}")
-            self.reporter.record(DownloadResult(
-                reference=ref,
-                status=PaperStatus.OA_BLOCKED_MANUAL,
-                publisher_url=manual,
-                notes=f"Open-access copy exists but the site blocks automated downloads ({last_error}). "
-                      f"Open the link in your browser and save the PDF manually."
-            ))
-            return
-
-        logger.warning(f"[FAILED] All OA download links failed for '{ref.title[:50]}': {last_error}")
-        self.reporter.record(DownloadResult(
-            reference=ref,
-            status=PaperStatus.DOWNLOAD_FAILED,
-            publisher_url=publisher_url,
-            notes=f"Found {len(candidates)} candidate URL(s) but download failed: {last_error}"
-        ))
+        for error in self.aggregator.errors:
+            attempts.append({"provider": "Discovery", "url": "", "stage": "search", "error": error})
+        errors = "; ".join(dict.fromkeys(a["error"] for a in attempts if a.get("error")))
+        if blocked:
+            status = PaperStatus.OA_BLOCKED_MANUAL
+            publisher_url = blocked[0]
+            notes = "An apparent open-access location blocked automated access. Other available sources were also tried."
+        elif tried or any(token in errors for token in ("HTTP 202", "HTTP 401", "HTTP 403", "HTTP 429", "HTTP 5", "timed out", "ConnectionError")):
+            status = PaperStatus.DOWNLOAD_FAILED
+            notes = f"Tried {len(tried)} unique PDF URL(s) from {discovered} candidates; no download succeeded."
+        else:
+            status = PaperStatus.PAYWALLED_OR_OA_NOT_FOUND
+            notes = "No usable PDF link found after expanded discovery. This does not prove the paper is paywalled."
+        if errors:
+            notes += " " + errors
+        self.reporter.record(DownloadResult(reference=ref, status=status,
+            publisher_url=publisher_url, notes=notes, attempts=attempts,
+            suggested_filename=desired_filename, recovery_action=recovery_action(status.value, errors)))

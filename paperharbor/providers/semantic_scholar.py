@@ -1,6 +1,7 @@
 """Semantic Scholar API provider."""
 
 import logging
+from urllib.parse import quote
 from typing import List
 import requests
 
@@ -22,11 +23,11 @@ class SemanticScholarProvider(BaseProvider):
         if not doi:
             return []
 
-        url = f"https://api.semanticscholar.org/graph/v1/paper/{doi}"
+        url = f"https://api.semanticscholar.org/graph/v1/paper/DOI:{quote(doi, safe='')}"
         params = {"fields": "isOpenAccess,openAccessPdf,url"}
 
         try:
-            resp = self.session.get(url, params=params, timeout=12)
+            resp = self.get(url, params=params, timeout=12)
             if resp.status_code != 200:
                 return []
 

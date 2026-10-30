@@ -1,6 +1,7 @@
 """CSV reporting and statistics generation for paper downloads."""
 
 import csv
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +25,10 @@ CSV_HEADERS = [
     "PDF_URL",
     "Publisher_Or_Landing_URL",
     "Notes",
+    "Attempt_Count",
+    "Attempt_Log",
+    "Recovery_Action",
+    "Suggested_Filename",
 ]
 
 
@@ -68,6 +73,10 @@ class Reporter:
                     "PDF_URL": res.pdf_url or "",
                     "Publisher_Or_Landing_URL": res.publisher_url or ref.publisher_url or "",
                     "Notes": res.notes or "",
+                    "Attempt_Count": len(res.attempts),
+                    "Attempt_Log": json.dumps(res.attempts, ensure_ascii=False),
+                    "Recovery_Action": res.recovery_action,
+                    "Suggested_Filename": res.suggested_filename or res.saved_filename or "",
                 }
                 writer.writerow(row)
 

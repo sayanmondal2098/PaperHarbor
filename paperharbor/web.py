@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from paperharbor.app import PaperHarborApp
+from paperharbor.recovery import ReportReader, RETRY_STATUSES, recovery_links
 from paperharbor.zotero.api_reader import ZoteroApiReader
 from paperharbor.zotero.export_reader import ZoteroExportReader
 from paperharbor.zotero.reader_base import ZoteroReaderBase
@@ -50,6 +51,7 @@ class JobState:
         self.dest = ""
         self.logs = []
         self.app = None
+        self.config = {}
 
     def snapshot(self):
         with self.lock:
@@ -58,6 +60,7 @@ class JobState:
                 for r in list(self.app.reporter.results):
                     results.append({
                         "status": r.status.value,
+                        "key": r.reference.key,
                         "year": r.reference.display_year,
                         "author": r.reference.display_author,
                         "title": r.reference.title,
@@ -65,6 +68,11 @@ class JobState:
                         "provider": r.provider or "",
                         "file": r.saved_filename or "",
                         "url": r.publisher_url or r.reference.publisher_url or "",
+                        "notes": r.notes,
+                        "attempts": r.attempts,
+                        "action": r.recovery_action,
+                        "suggested_filename": r.suggested_filename,
+                        "links": recovery_links(r.reference),
                     })
             return {
                 "running": self.running, "done": self.done, "error": self.error,
@@ -91,8 +99,8 @@ def _build_reader(cfg):
         if not isinstance(name, str) or not isinstance(content, str):
             raise ValueError("Upload a BibTeX or CSL-JSON text file.")
         suffix = Path(name).suffix.lower()
-        if suffix not in (".bib", ".bibtex", ".json"):
-            raise ValueError("Supported uploads: .bib, .bibtex, and .json.")
+        if suffix not in (".bib", ".bibtex", ".json", ".csv"):
+            raise ValueError("Supported uploads: .bib, .bibtex, .json, and PaperHarbor .csv reports.")
         if not content.strip():
             raise ValueError("The uploaded file is empty.")
         if len(content.encode("utf-8")) > MAX_REQUEST_BYTES:
@@ -100,9 +108,10 @@ def _build_reader(cfg):
         with tempfile.TemporaryDirectory(prefix="paperharbor_upload_") as folder:
             path = Path(folder) / ("references" + suffix)
             path.write_text(content.lstrip("\ufeff"), encoding="utf-8")
-            refs = ZoteroExportReader(path).get_references(only_missing_pdf=False)
+            reader = ReportReader(path, include_not_found=bool(cfg.get("retry_not_found"))) if suffix == ".csv" else ZoteroExportReader(path)
+            refs = reader.get_references(only_missing_pdf=False)
         if not refs or not any(r.title or r.doi or r.url for r in refs):
-            raise ValueError("No usable references found. Check the file's BibTeX or CSL-JSON format.")
+            raise ValueError("No usable references found. For a CSV report, only failed/manual/error rows are loaded by default.")
         # Selection must identify individual entries even with absent/duplicate export IDs.
         for index, ref in enumerate(refs):
             ref.key = f"upload-{index + 1}:{ref.key}"
@@ -144,7 +153,7 @@ def _load_library(cfg):
     }
 
 
-def _run_job(cfg):
+def _run_job(cfg, reader=None):
     handler = _LogHandler()
     handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
     root = logging.getLogger()
@@ -159,13 +168,14 @@ def _run_job(cfg):
                 STATE.current, STATE.total, STATE.title = idx, total, ref.title
 
         app = PaperHarborApp(
-            reader=_build_reader(cfg),
+            reader=reader if reader is not None else _build_reader(cfg),
             dest_folder=Path(cfg["dest_folder"]),
             email=cfg.get("email") or "paperharbor.downloader@gmail.com",
             skip_zotero_has_pdf=not cfg.get("include_zotero_has_pdf"),
             skip_existing_dest=not cfg.get("force_redownload"),
             filename_template=cfg.get("template") or "{year}_{author}_{title}.pdf",
             progress_callback=progress,
+            pdf_overrides=cfg.get("pdf_overrides"),
         )
         with STATE.lock:
             STATE.app = app
@@ -237,14 +247,30 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, json.dumps(_load_library(cfg)))
             except Exception as e:
                 return self._send(400, json.dumps({"error": str(e)}))
-        if self.path != "/api/start":
+        if self.path not in ("/api/start", "/api/retry"):
             return self._send(404, "{}")
         with STATE.lock:
             if STATE.running:
                 return self._send(409, json.dumps({"error": "A job is already running."}))
+            reader = None
+            if self.path == "/api/retry":
+                if not STATE.app:
+                    return self._send(400, json.dumps({"error": "Run a download job or upload a previous CSV report first."}))
+                refs = [result.reference for result in STATE.app.reporter.results if result.status.value in RETRY_STATUSES]
+                if not refs:
+                    return self._send(400, json.dumps({"error": "No failed or manual entries to retry."}))
+                reader = UploadedReferenceReader(refs)
+                overrides = cfg.get("pdf_overrides", {})
+                if not isinstance(overrides, dict):
+                    return self._send(400, json.dumps({"error": "Alternate PDF links must be an object."}))
+                cfg = dict(STATE.config)
+                cfg["pdf_overrides"] = {**cfg.get("pdf_overrides", {}), **overrides}
+                cfg.pop("item_keys", None)
+                cfg.pop("limit", None)
             STATE.reset()
+            STATE.config = dict(cfg)
             STATE.running = True
-        threading.Thread(target=_run_job, args=(cfg,), daemon=True).start()
+        threading.Thread(target=_run_job, args=(cfg, reader), daemon=True).start()
         self._send(200, json.dumps({"ok": True}))
 
 

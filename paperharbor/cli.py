@@ -1,6 +1,7 @@
 """Command line interface for PaperHarbor."""
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -8,18 +9,19 @@ from typing import Optional
 
 from paperharbor.app import PaperHarborApp
 from paperharbor.models import PaperStatus
+from paperharbor.recovery import ReportReader
 from paperharbor.zotero.api_reader import ZoteroApiReader
 from paperharbor.zotero.export_reader import ZoteroExportReader
 from paperharbor.zotero.sqlite_reader import ZoteroSqliteReader, find_default_zotero_db
 
 BANNER = r"""
 ========================================================================
-     ____                         _   _             _                 
-    |  _ \ __ _ _ __   ___ _ __  | | | | __ _ _ __ | |__   ___  _ __  
-    | |_) / _` | '_ \ / _ \ '__| | |_| |/ _` | '__|| '_ \ / _ \| '__| 
-    |  __/ (_| | |_) |  __/ |    |  _  | (_| | |   | |_) | (_) | |    
-    |_|   \__,_| .__/ \___|_|    |_| |_|\__,_|_|   |_.__/ \___/|_|    
-               |_|                                                    
+     ____                         _   _             _
+    |  _ \ __ _ _ __   ___ _ __  | | | | __ _ _ __ | |__   ___  _ __
+    | |_) / _` | '_ \ / _ \ '__| | |_| |/ _` | '__|| '_ \ / _ \| '__|
+    |  __/ (_| | |_) |  __/ |    |  _  | (_| | |   | |_) | (_) | |
+    |_|   \__,_| .__/ \___|_|    |_| |_|\__,_|_|   |_.__/ \___/|_|
+               |_|
     Bulk Open-Access PDF Downloader for Zotero Libraries
 ========================================================================
 """
@@ -34,11 +36,11 @@ def setup_logging(verbose: bool = False):
     )
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
-    
+
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
     root_logger.handlers = [handler]
-    
+
     # Suppress verbose urllib3 logs unless extra verbose
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("requests").setLevel(logging.WARNING)
@@ -165,6 +167,9 @@ Examples:
         help="Enable verbose debug logging"
     )
 
+    parser.add_argument("--retry-report", help="Retry Download failed / Open manually / Error rows from a PaperHarbor CSV report")
+    parser.add_argument("--retry-not-found", action="store_true", help="Also retry No open copy found rows with --retry-report")
+    parser.add_argument("--pdf-overrides", help="JSON file mapping a DOI or item key to one PDF URL or a list of verified URLs")
     return parser.parse_args(args)
 
 
@@ -182,7 +187,9 @@ def run_cli(args: Optional[list] = None) -> int:
 
     # Determine reader
     try:
-        if parsed.export_file:
+        if parsed.retry_report:
+            reader = ReportReader(parsed.retry_report, include_not_found=parsed.retry_not_found)
+        elif parsed.export_file:
             print(f"[*] Reading exported file: {parsed.export_file}")
             reader = ZoteroExportReader(Path(parsed.export_file))
         elif parsed.api_key:
@@ -209,6 +216,18 @@ def run_cli(args: Optional[list] = None) -> int:
         print(f"\n[!] Failed to initialize Zotero reader: {e}\n")
         return 1
 
+    try:
+        overrides = json.loads(Path(parsed.pdf_overrides).read_text(encoding="utf-8")) if parsed.pdf_overrides else {}
+        if not isinstance(overrides, dict) or any(
+            not isinstance(value, (str, list)) or
+            any(not isinstance(url, str) or not url.startswith(("https://", "http://"))
+                for url in ([value] if isinstance(value, str) else value))
+            for value in overrides.values()
+        ):
+            raise ValueError("PDF overrides must map item keys/DOIs to http(s) URL strings or lists.")
+    except (ValueError, OSError) as exc:
+        print(f"[!] Could not load PDF overrides: {exc}")
+        return 1
     app = PaperHarborApp(
         reader=reader,
         dest_folder=dest_folder,
@@ -217,6 +236,7 @@ def run_cli(args: Optional[list] = None) -> int:
         skip_existing_dest=not parsed.force_redownload,
         filename_template=parsed.template,
         report_path=Path(parsed.report) if parsed.report else None,
+        pdf_overrides=overrides,
     )
 
     try:
@@ -236,6 +256,7 @@ def run_cli(args: Optional[list] = None) -> int:
         print(f"  - Successfully Downloaded:        {summary[PaperStatus.DOWNLOADED.value]}")
         print(f"  - Paywalled / No OA Found:        {summary[PaperStatus.PAYWALLED_OR_OA_NOT_FOUND.value]}")
         print(f"  - Download Attempt Failed:        {summary[PaperStatus.DOWNLOAD_FAILED.value]}")
+        print(f"  - Open manually:                  {summary[PaperStatus.OA_BLOCKED_MANUAL.value]}")
         if summary.get(PaperStatus.ERROR.value, 0) > 0:
             print(f"  - Errors encountered:             {summary[PaperStatus.ERROR.value]}")
         print("-" * 60)

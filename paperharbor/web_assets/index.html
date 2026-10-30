@@ -42,7 +42,9 @@
               <label for="src">Reference source</label>
               <select id="src">
                 <option value="sqlite">Zotero · local library</option>
-                <option value="upload">Upload a bibliography</option>
+                <option value="upload">
+                  Upload bibliography / retry report
+                </option>
                 <option value="export">Export file · local path</option>
                 <option value="api">Zotero · Web API</option>
               </select>
@@ -61,12 +63,20 @@
                   ><span class="upload-icon" aria-hidden="true">↑</span
                   ><strong>Choose a bibliography</strong
                   ><span>or drag and drop it here</span
-                  ><small>.bib · .bibtex · .json — up to 5 MB</small
-                  ><input id="bib_file" type="file" accept=".bib,.bibtex,.json"
+                  ><small>.bib · .bibtex · .json · .csv — up to 5 MB</small
+                  ><input
+                    id="bib_file"
+                    type="file"
+                    accept=".bib,.bibtex,.json,.csv"
                 /></label>
                 <p id="upload_info" class="hint" aria-live="polite">
-                  Reference details load automatically after upload.
+                  Upload a bibliography or a PaperHarbor CSV report to retry
+                  failed/manual entries.
                 </p>
+                <label class="check"
+                  ><input id="retry_not_found" type="checkbox" /> Also retry “No
+                  open copy found” rows from CSV</label
+                >
               </div>
               <div id="f_export" class="source-panel" hidden>
                 <label for="export_file">Export file path</label
@@ -260,6 +270,14 @@
                 </div>
                 <div id="rep" class="report" hidden></div>
                 <p id="job_error" class="error" role="alert"></p>
+                <button
+                  type="button"
+                  id="retry_failed"
+                  class="secondary"
+                  hidden
+                >
+                  Retry failed / manual entries
+                </button>
               </div>
               <div id="results_wrap" class="table-scroll" hidden>
                 <table>
@@ -292,7 +310,7 @@
             target="_blank"
             rel="noopener"
             >Sayan Mondal</a
-          ></span
+          > · <a href="https://sayanmondal2098.github.io" target="_blank" rel="noopener">Website</a></span
         >
       </footer>
     </div>
