@@ -88,12 +88,22 @@ function invalidateLibrary() {
 function sourceChanged() {
   invalidateLibrary();
   const value = $("src").value;
-  for (const source of ["sqlite", "upload", "export", "api"])
-    $("f_" + source).hidden = value !== source;
+  for (const source of ["sqlite", "upload", "export", "api", "single"]) {
+    const panel = $("f_" + source);
+    if (panel) panel.hidden = value !== source;
+  }
 }
 
 function sourceConfig() {
   switch ($("src").value) {
+    case "single":
+      if (!$("paper_identifier").value.trim())
+        throw new Error("Paste a paper DOI or article URL first.");
+      return {
+        paper_identifier: $("paper_identifier").value.trim(),
+        paper_title: $("paper_title").value.trim(),
+        email: $("email").value.trim(),
+      };
     case "upload":
       if (!upload)
         throw new Error(
@@ -428,6 +438,9 @@ async function poll() {
             '<td><div class="paper-title">' +
             esc(result.file || result.provider || "—") +
             "</div>" +
+            (result.file && result.provider
+              ? '<div class="paper-meta">' + esc(result.provider) + "</div>"
+              : "") +
             (/^https?:\/\//i.test(result.url)
               ? '<a href="' +
                 esc(result.url) +
@@ -493,8 +506,10 @@ for (const id of [
   "api_key",
   "user_id",
   "group_id",
+  "paper_identifier",
+  "paper_title",
 ])
-  $(id).addEventListener("input", invalidateLibrary);
+  $(id)?.addEventListener("input", invalidateLibrary);
 $("connect").addEventListener("click", loadLibrary);
 $("bib_file").addEventListener("change", (event) =>
   readUpload(event.target.files[0]),
@@ -575,5 +590,32 @@ request("/api/defaults")
       data.zotero_path || "Auto-detect zotero.sqlite";
   })
   .catch(() => {});
+async function checkServerRuntime() {
+  try {
+    const response = await fetch("/api/runtime", { cache: "no-store" });
+    let needsRestart = response.status === 404;
+    if (response.ok) needsRestart = (await response.json()).restart_required;
+    if (!response.ok && response.status !== 404) return;
+    let notice = $("server_update_notice");
+    if (needsRestart) {
+      if (!notice) {
+        notice = document.createElement("div");
+        notice.id = "server_update_notice";
+        notice.className = "server-update-notice";
+        notice.setAttribute("role", "status");
+        document.querySelector("main").prepend(notice);
+      }
+      notice.textContent =
+        "PaperHarbor has been updated. Restart the Python web server with python web.py, then refresh this page to use the latest download fixes.";
+    } else if (notice) {
+      notice.remove();
+    }
+  } catch {
+    // Connection errors are already shown by the regular job status poll.
+  } finally {
+    setTimeout(checkServerRuntime, 30000);
+  }
+}
 updateControls();
 poll();
+checkServerRuntime();

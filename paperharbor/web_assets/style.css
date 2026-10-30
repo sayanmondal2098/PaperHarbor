@@ -876,3 +876,13 @@ footer a {
   background: #fceaea;
   color: #ab5151;
 }
+
+.server-update-notice {
+  margin-top: 20px;
+  padding: 14px 18px;
+  border: 1px solid #dfc47d;
+  background: #fff6df;
+  color: #72561d;
+  border-radius: 8px;
+  font-size: 13px;
+}

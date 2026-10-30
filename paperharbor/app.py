@@ -193,7 +193,8 @@ class PaperHarborApp:
             if candidate.url in resolved:
                 return []
             resolved.add(candidate.url)
-            urls = self.landing_resolver.resolve(candidate.url, expected_doi=ref.clean_doi)
+            urls = self.landing_resolver.resolve(candidate.url, expected_doi=ref.clean_doi,
+                                                 expected_title=ref.title)
             if self.landing_resolver.last_error.startswith("Withdrawn arXiv record"):
                 withdrawal_note = self.landing_resolver.last_error
                 log_attempt(candidate, "withdrawal", withdrawal_note)
@@ -235,7 +236,7 @@ class PaperHarborApp:
                 tried.add(candidate.url)
                 logger.info("[DOWNLOADING] %s: %s", candidate.provider, candidate.url)
                 success, size_bytes, error = self.downloader.download_pdf(
-                    candidate.url, dest_file, referer=candidate.landing_page)
+                    candidate.url, dest_file, referer=candidate.landing_page, expected_doi=ref.clean_doi)
                 if success:
                     attempts.append({"provider": candidate.provider, "url": candidate.url,
                                      "stage": "download", "error": "", "outcome": "downloaded"})

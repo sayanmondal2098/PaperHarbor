@@ -7,6 +7,7 @@ import requests
 from paperharbor.models import CandidatePDF, Reference
 from paperharbor.providers.arxiv import ArxivProvider
 from paperharbor.providers.acm import AcmProvider
+from paperharbor.providers.author_copies import AuthorCopiesProvider
 from paperharbor.providers.matching import conflicts_with_doi
 from paperharbor.providers.landing import publisher_pdf_variants
 from paperharbor.providers.crossref import CrossrefProvider
@@ -35,6 +36,7 @@ class ProviderAggregator:
         self.semantic_scholar = SemanticScholarProvider(email=self.email, session=self.session)
         self.crossref = CrossrefProvider(email=self.email, session=self.session)
         self.acm = AcmProvider(email=self.email, session=self.session)
+        self.author_copies = AuthorCopiesProvider(email=self.email, session=self.session)
         self._queried = set()
         self.errors = []
 
@@ -57,7 +59,7 @@ class ProviderAggregator:
     def find_fallback_candidates(self, reference):
         """After downloads fail, query every provider that the fast search skipped."""
         candidates = []
-        for provider in (self.acm, self.openalex, self.europe_pmc, self.arxiv, self.semantic_scholar, self.crossref):
+        for provider in (self.author_copies, self.acm, self.unpaywall, self.openalex, self.europe_pmc, self.arxiv, self.semantic_scholar, self.crossref):
             if provider.name not in self._queried:
                 candidates.extend(self._search(provider, reference))
         if reference.publisher_url:
@@ -92,7 +94,18 @@ class ProviderAggregator:
         def direct():
             return [c for c in candidates if c.is_direct_pdf]
 
+        verified_copies = self._search(self.author_copies, reference)
+        add_candidates(verified_copies)
         add_candidates(self._search(self.acm, reference))
+        # An independently reviewed author copy does not need an index to mark
+        # the publisher version OA. Try it before contacting metadata services.
+        if verified_copies:
+            if reference.url and reference.url.startswith(("http://", "https://")):
+                for url in publisher_pdf_variants(reference.url):
+                    add_candidates([CandidatePDF(url=url, provider="Zotero URL", landing_page=reference.url)])
+                add_candidates([CandidatePDF(url=reference.url, provider="Zotero URL", is_direct_pdf=False)])
+            candidates.sort(key=lambda candidate: not candidate.is_direct_pdf)
+            return candidates, publisher_url
 
         # 1. Check arXiv first if arXiv DOI or preprint
         if reference.doi and "arxiv" in reference.doi.lower():

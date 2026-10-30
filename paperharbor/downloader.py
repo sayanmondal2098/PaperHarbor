@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 from urllib.parse import urlparse
+from paperharbor.providers.matching import doi_from_url
+from paperharbor.http_helpers import retry_after_seconds
 import requests
 
 logger = logging.getLogger(__name__)
@@ -31,7 +33,7 @@ class PdfDownloader:
             "Accept-Encoding": "gzip, deflate",
         })
 
-    def download_pdf(self, url, destination_path, min_bytes=1024, referer=None):
+    def download_pdf(self, url, destination_path, min_bytes=1024, referer=None, expected_doi=None):
         """Retry transient failures only; never repeatedly hammer access-denied pages."""
         parsed = urlparse(url)
         if parsed.scheme not in ("https", "http") or not parsed.netloc:
@@ -39,7 +41,7 @@ class PdfDownloader:
         result = (False, 0, "No download attempted")
         for attempt in range(self.retries + 1):
             self.retry_after = None
-            result = self._download_once(url, destination_path, min_bytes, referer)
+            result = self._download_once(url, destination_path, min_bytes, referer, expected_doi)
             if result[0]:
                 return result
             error = result[2] or "Unknown download error"
@@ -62,6 +64,7 @@ class PdfDownloader:
         destination_path: Path,
         min_bytes: int = 1024,
         referer: Optional[str] = None,
+        expected_doi: Optional[str] = None,
     ) -> Tuple[bool, int, Optional[str]]:
         """
         Downloads a PDF from url and saves it to destination_path.
@@ -81,9 +84,10 @@ class PdfDownloader:
             logger.debug(f"Attempting download from: {url}")
             headers = {"Referer": referer} if referer else {}
             with self.session.get(url, stream=True, timeout=(self.connect_timeout, self.timeout), allow_redirects=True, headers=headers) as resp:
-                retry_after = resp.headers.get("Retry-After")
-                if isinstance(retry_after, str) and retry_after.isdigit():
-                    self.retry_after = float(retry_after)
+                redirected_doi = doi_from_url(resp.url) if isinstance(resp.url, str) else None
+                if expected_doi and redirected_doi and redirected_doi != expected_doi.lower():
+                    return False, 0, f"Rejected PDF redirect with conflicting DOI {redirected_doi}"
+                self.retry_after = retry_after_seconds(resp.headers.get("Retry-After"))
                 if resp.status_code not in (200, 202):
                     return False, 0, f"HTTP {resp.status_code} ({resp.reason})"
 

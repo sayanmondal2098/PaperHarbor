@@ -41,13 +41,52 @@
             <fieldset id="source_fields">
               <label for="src">Reference source</label>
               <select id="src">
-                <option value="sqlite">Zotero · local library</option>
+                <option value="single">Single paper · DOI or URL</option>
+                <option value="sqlite" selected>Zotero · local library</option>
                 <option value="upload">
                   Upload bibliography / retry report
                 </option>
                 <option value="export">Export file · local path</option>
                 <option value="api">Zotero · Web API</option>
               </select>
+              <div id="f_single" class="source-panel" hidden>
+                <label for="paper_identifier">Paper DOI or article URL</label>
+                <input
+                  id="paper_identifier"
+                  type="text"
+                  placeholder="10.1145/1557019.1557153"
+                />
+                <label for="paper_title"
+                  >Paper title <span>optional fallback</span></label
+                >
+                <input
+                  id="paper_title"
+                  type="text"
+                  placeholder="Used if metadata cannot be loaded"
+                />
+                <details class="settings">
+                  <summary>ACM walkthrough</summary>
+                  <ol class="hint">
+                    <li>Copy the paper DOI or ACM article URL.</li>
+                    <li>Paste it above and click Load references.</li>
+                    <li>Select the paper and choose a destination folder.</li>
+                    <li>
+                      Start the download. Author copies and OA sources are tried
+                      automatically.
+                    </li>
+                    <li>
+                      If blocked, expand Attempt details. Paste a verified
+                      alternate PDF link beneath the reference or use the
+                      article's normal browser download.
+                    </li>
+                  </ol>
+                  <p class="hint">
+                    Article access and publisher automation rules determine
+                    availability. A valid DOI does not guarantee a downloadable
+                    PDF.
+                  </p>
+                </details>
+              </div>
               <div id="f_sqlite" class="source-panel">
                 <label for="zotero_path"
                   >Zotero database path <span>optional</span></label
@@ -310,7 +349,14 @@
             target="_blank"
             rel="noopener"
             >Sayan Mondal</a
-          > · <a href="https://sayanmondal2098.github.io" target="_blank" rel="noopener">Website</a></span
+          >
+          ·
+          <a
+            href="https://sayanmondal2098.github.io"
+            target="_blank"
+            rel="noopener"
+            >Website</a
+          ></span
         >
       </footer>
     </div>

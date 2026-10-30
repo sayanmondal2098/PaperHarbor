@@ -1,0 +1,28 @@
+{
+  "10.1145/1557019.1557153": {
+    "title": "Beyond Blacklists: Learning to Detect Malicious Web Sites from Suspicious URLs",
+    "source_page": "https://cseweb.ucsd.edu/~jtma/pubs.html",
+    "verified_on": "2026-10-30",
+    "pdf_urls": [
+      "https://cseweb.ucsd.edu/~jtma/papers/beyondbl-kdd2009.pdf",
+      "https://cseweb.ucsd.edu/~voelker/pubs/mal-url-kdd09.pdf"
+    ]
+  },
+  "10.1145/1961189.1961202": {
+    "title": "Learning to Detect Malicious URLs",
+    "source_page": "https://cseweb.ucsd.edu/~savage/pubs.htm",
+    "verified_on": "2026-10-30",
+    "pdf_urls": [
+      "https://cseweb.ucsd.edu/~savage/papers/TIST11.pdf"
+    ]
+  },
+  "10.1145/3133956.3133982": {
+    "title": "Practical Secure Aggregation for Privacy-Preserving Machine Learning",
+    "source_page": "https://research.google/pubs/practical-secure-aggregation-for-privacy-preserving-machine-learning/",
+    "verified_on": "2026-10-30",
+    "pdf_urls": [
+      "https://acmccs.github.io/papers/p1175-bonawitzA.pdf",
+      "https://eprint.iacr.org/2017/281.pdf"
+    ]
+  }
+}

@@ -1,6 +1,7 @@
 """Local web UI for PaperHarbor (stdlib only, bound to localhost)."""
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -13,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from paperharbor.app import PaperHarborApp
+from paperharbor.single_paper import SinglePaperReader
 from paperharbor.recovery import ReportReader, RETRY_STATUSES, recovery_links
 from paperharbor.zotero.api_reader import ZoteroApiReader
 from paperharbor.zotero.export_reader import ZoteroExportReader
@@ -21,6 +23,17 @@ from paperharbor.zotero.sqlite_reader import ZoteroSqliteReader, find_default_zo
 
 MAX_LOG_LINES = 500
 MAX_REQUEST_BYTES = 8 * 1024 * 1024
+
+
+def runtime_fingerprint():
+    """Identify Python code, source catalogs, and the HTML loaded by this server."""
+    package = Path(__file__).resolve().parent
+    digest = hashlib.sha256()
+    for path in sorted(package.rglob("*")):
+        if path.is_file() and path.suffix in (".py", ".json", ".html"):
+            digest.update(path.relative_to(package).as_posix().encode("utf-8"))
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
 
 
 class UploadedReferenceReader(ZoteroReaderBase):
@@ -93,6 +106,9 @@ class _LogHandler(logging.Handler):
 
 
 def _build_reader(cfg):
+    if cfg.get("paper_identifier"):
+        return SinglePaperReader(cfg["paper_identifier"], title=cfg.get("paper_title", ""),
+                                 email=cfg.get("email") or None)
     if "upload_content" in cfg:
         name = cfg.get("upload_name", "")
         content = cfg["upload_content"]
@@ -214,6 +230,13 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/defaults":
             db = find_default_zotero_db()
             self._send(200, json.dumps({"zotero_path": str(db) if db else ""}))
+        elif self.path == "/api/runtime":
+            current = runtime_fingerprint()
+            self._send(200, json.dumps({
+                "loaded_revision": LOADED_REVISION,
+                "disk_revision": current,
+                "restart_required": current != LOADED_REVISION,
+            }))
         elif self.path in ("/static/style.css", "/static/app.js"):
             name = self.path.rsplit("/", 1)[-1]
             ctype = "text/css" if name.endswith(".css") else "application/javascript"
@@ -276,6 +299,7 @@ class Handler(BaseHTTPRequestHandler):
 
 WEB_ASSETS = Path(__file__).with_name("web_assets")
 PAGE = (WEB_ASSETS / "index.html").read_text(encoding="utf-8")
+LOADED_REVISION = runtime_fingerprint()
 
 
 def main(argv=None):

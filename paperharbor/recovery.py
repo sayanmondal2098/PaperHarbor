@@ -6,6 +6,7 @@ from urllib.parse import quote, urlsplit
 
 from paperharbor.models import Reference
 from paperharbor.zotero.reader_base import ZoteroReaderBase
+from paperharbor.providers.author_copies import author_copy_candidates
 
 RETRY_STATUSES = {"DOWNLOAD_FAILED", "OA_BLOCKED_MANUAL", "ERROR"}
 
@@ -52,6 +53,8 @@ def recovery_links(reference):
         links.insert(0, {"label": "Publisher / repository", "url": reference.publisher_url})
     if reference.clean_doi and reference.clean_doi.lower().startswith("10.1145/"):
         links.insert(0, {"label": "ACM Digital Library", "url": f"https://dl.acm.org/doi/{reference.clean_doi}"})
+    for index, candidate in enumerate(author_copy_candidates(reference), start=1):
+        links.insert(index - 1, {"label": f"Author / conference PDF {index}", "url": candidate.url})
     return links
 
 

@@ -10,6 +10,7 @@ from typing import Optional
 from paperharbor.app import PaperHarborApp
 from paperharbor.models import PaperStatus
 from paperharbor.recovery import ReportReader
+from paperharbor.single_paper import SinglePaperReader
 from paperharbor.zotero.api_reader import ZoteroApiReader
 from paperharbor.zotero.export_reader import ZoteroExportReader
 from paperharbor.zotero.sqlite_reader import ZoteroSqliteReader, find_default_zotero_db
@@ -170,7 +171,14 @@ Examples:
     parser.add_argument("--retry-report", help="Retry Download failed / Open manually / Error rows from a PaperHarbor CSV report")
     parser.add_argument("--retry-not-found", action="store_true", help="Also retry No open copy found rows with --retry-report")
     parser.add_argument("--pdf-overrides", help="JSON file mapping a DOI or item key to one PDF URL or a list of verified URLs")
-    return parser.parse_args(args)
+    single = parser.add_mutually_exclusive_group()
+    single.add_argument("--doi", help="Download one paper by DOI (Zotero/export not required)")
+    single.add_argument("--url", help="Download one paper by its article/PDF URL")
+    parser.add_argument("--title", default="", help="Title for --doi/--url when metadata cannot be retrieved")
+    parsed = parser.parse_args(args)
+    if parsed.title and not (parsed.doi or parsed.url):
+        parser.error("--title requires --doi or --url.")
+    return parsed
 
 
 def run_cli(args: Optional[list] = None) -> int:
@@ -187,7 +195,9 @@ def run_cli(args: Optional[list] = None) -> int:
 
     # Determine reader
     try:
-        if parsed.retry_report:
+        if parsed.doi or parsed.url:
+            reader = SinglePaperReader(parsed.doi or parsed.url, title=parsed.title, email=parsed.email)
+        elif parsed.retry_report:
             reader = ReportReader(parsed.retry_report, include_not_found=parsed.retry_not_found)
         elif parsed.export_file:
             print(f"[*] Reading exported file: {parsed.export_file}")

@@ -119,7 +119,8 @@ class TestProviderRecovery(unittest.TestCase):
     def test_fallback_queries_remaining_providers_even_after_a_direct_candidate(self):
         aggregator = ProviderAggregator()
         providers = [aggregator.openalex, aggregator.europe_pmc, aggregator.arxiv,
-                     aggregator.semantic_scholar, aggregator.crossref]
+                     aggregator.semantic_scholar, aggregator.crossref,
+                     aggregator.author_copies, aggregator.acm, aggregator.unpaywall]
         for provider in providers:
             provider.search = MagicMock(return_value=[])
         aggregator._queried = {aggregator.openalex.name}

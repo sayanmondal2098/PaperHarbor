@@ -8,6 +8,7 @@ from paperharbor.providers.europe_pmc import EuropePmcProvider
 from paperharbor.providers.semantic_scholar import SemanticScholarProvider
 from paperharbor.providers.crossref import CrossrefProvider
 from paperharbor.providers.acm import AcmProvider
+from paperharbor.providers.author_copies import AuthorCopiesProvider
 from paperharbor.providers.aggregator import ProviderAggregator
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "SemanticScholarProvider",
     "CrossrefProvider",
     "AcmProvider",
+    "AuthorCopiesProvider",
     "ProviderAggregator",
 ]

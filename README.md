@@ -23,6 +23,7 @@ PaperHarbor turns a Zotero library, BibTeX bibliography, or CSL-JSON export into
 - [Command-line options](#command-line-options)
 - [Usage examples](#usage-examples)
 - [ACM Digital Library and other domains](#acm-digital-library-and-other-domains)
+- [ACM walkthrough](docs/ACM_WALKTHROUGH.md)
 - [PDF discovery](#pdf-discovery)
 - [Files and naming](#files-and-naming)
 - [CSV reports](#csv-reports)
@@ -42,7 +43,7 @@ PaperHarbor turns a Zotero library, BibTeX bibliography, or CSL-JSON export into
 | Multiple reference sources | Local `zotero.sqlite`, CSL-JSON, BibTeX, Zotero Web API, or unresolved rows from a previous CSV report |
 | Personal and group libraries | API access using a user ID or a group ID |
 | Missing-PDF detection | Checks attachment metadata and skips items already marked as having PDFs by default |
-| Multiple discovery providers | ACM Digital Library, Unpaywall, OpenAlex, arXiv, Europe PMC, Semantic Scholar, and Crossref |
+| Multiple discovery providers | Reviewed author copies, ACM Digital Library, Unpaywall, OpenAlex, arXiv, Europe PMC, Semantic Scholar, and Crossref |
 | Landing-page resolution | Attempts to extract PDF links from article pages and stored Zotero URLs |
 | Download checks | Looks for a `%PDF-` header in the first 1,024 bytes and rejects downloads smaller than 1,024 bytes |
 | Organized filenames | Configurable year, author, and title templates with filename sanitization |
@@ -108,6 +109,15 @@ Run the following commands from the repository root. If PowerShell prevents acti
 
 ## Quick start
 
+For one paper, paste its DOI directly; Zotero is not required:
+
+```powershell
+python main.py --doi "10.1145/1557019.1557153" --dest-folder "D:\Research\Papers"
+```
+
+For an article URL, use `--url` instead. Add `--title "Actual paper title"` if the metadata service is unavailable. The [ACM walkthrough](docs/ACM_WALKTHROUGH.md) covers single papers, bibliographies, diagnostics, and blocked downloads.
+
+
 Start with a small batch using your local Zotero library:
 
 ```powershell
@@ -149,7 +159,7 @@ python web.py
 The server opens your default browser at **http://127.0.0.1:8765/** and binds to `127.0.0.1` only.
 
 1. Enter a destination folder or choose **Browse...**.
-2. Choose a local Zotero database, bibliography/report upload, local export path, or the Zotero Web API.
+2. Choose **Single paper · DOI or URL**, a local Zotero database, a bibliography/report upload, a local export path, or the Zotero Web API.
 3. Fill in the source path or credentials. Leave the SQLite path blank for automatic detection.
 4. Optionally set a contact email, reference limit, filename template, or download overrides.
 5. Click **Load references**, or choose **Upload bibliography / retry report** and select/drop a `.bib`, `.bibtex`, CSL-JSON `.json`, or PaperHarbor `.csv` report. Uploads up to 5 MB load automatically; Zotero is not required for this source.
@@ -211,7 +221,7 @@ python main.py -d "D:\Research\Papers" --api-key "YOUR_ZOTERO_API_KEY" --group-i
 
 Supply only the appropriate ID. The web interface requires one ID; on the CLI, the user library takes precedence if both are supplied. The reader retrieves item and attachment metadata rather than downloading Zotero's stored attachments.
 
-If multiple source options are supplied, selection follows this order: **export file → API key → local SQLite database**.
+If multiple CLI source options are supplied, selection follows this order: **single DOI/URL > retry report > export file > API key > local SQLite database**.
 
 ## Command-line options
 
@@ -232,6 +242,9 @@ python main.py --help
 | `--include-zotero-has-pdf` | Also search for items already marked as having a Zotero PDF | Disabled |
 | `--force-redownload` | Bypass the existing-destination skip check | Disabled |
 | `--template` | Filename template using `{year}`, `{author}`, and `{title}` | `{year}_{author}_{title}.pdf` |
+| `--doi` | One paper by DOI; no Zotero/export required | Unset |
+| `--url` | One article/PDF URL; mutually exclusive with `--doi` | Unset |
+| `--title` | Fallback title for `--doi` or `--url` | Retrieved from metadata |
 | `--export-file` | Read a `.json`, `.bib`, or `.bibtex` export | Unset |
 | `--retry-report` | Retry failed/manual/error rows from a PaperHarbor CSV report | Unset |
 | `--retry-not-found` | Also include no-copy-found rows when using `--retry-report` | Disabled |
@@ -274,9 +287,23 @@ python main.py -d "D:\Research\Papers" --force-redownload --verbose
 
 ## ACM Digital Library and other domains
 
+Follow the [step-by-step ACM walkthrough](docs/ACM_WALKTHROUGH.md) for any paper DOI/URL. The web interface also includes a short guide under the Single paper source. Identifier support does not guarantee that a publisher will allow automated PDF retrieval.
+
+The diagnostic helper inspects candidates without downloading:
+
+```powershell
+python -m paperharbor.diagnose "10.1145/1557019.1557153"
+python -m paperharbor.diagnose "10.1145/1557019.1557153" --expanded
+```
+
+It reports reference metadata, candidate URLs, provider errors, and rejected DOI conflicts as JSON. Candidate discovery alone does not confirm download availability.
+
+
 ACM articles are recognized automatically from `10.1145/...` DOIs and `dl.acm.org` article URLs in Zotero or uploaded exports. A dedicated **ACM Digital Library** provider tries the article PDF and ePDF viewer routes. Legacy ACM citation links can be resolved when their article metadata or redirects are available. No separate ACM API key is required.
 
 Crossref PDF links are accepted when their URL identifies a PDF, including ACM links whose content type is `unspecified`. If ACM returns HTTP 403, PaperHarbor tries other available sources and offers the ACM article link for normal browser access. This support does not bypass site controls or guarantee automated access. See [ACM's open-access information](https://www.acm.org/publications/openaccess).
+
+Some author-hosted PDFs are absent from OA indexes even when they download publicly. A small reviewed catalog in [author_copies.json](paperharbor/providers/author_copies.json) maps exact DOIs to author/conference copies and records an evidence page and verification date. Known copies are attempted before publisher requests or live metadata queries, without requiring a user override file. The catalog currently covers Beyond Blacklists, Learning to Detect Malicious URLs, and Practical Secure Aggregation; it is not a complete ACM archive. If its links fail, normal discovery continues. Matching author PDF links also appear in the result's manual-access links.
 
 Supported URL forms also include IEEE article/viewer URLs, OpenReview forum-to-PDF links, IACR ePrint links, HAL repository document links, repository download buttons, and same-host PDF.js viewers. Requests identify the downloader as PaperHarbor.
 
@@ -290,6 +317,7 @@ When an arXiv landing page explicitly marks a paper withdrawn, the run records *
 
 | Source | Role |
 | --- | --- |
+| Verified author copies | Small DOI-keyed catalog of reviewed author/conference copies missed by live OA indexes |
 | ACM Digital Library | Resolves ACM DOIs and article URLs to article PDF/ePDF candidates |
 | arXiv | Resolves identifiers from metadata and supports title-based discovery |
 | Unpaywall | Looks up open-access locations by DOI |
@@ -373,7 +401,7 @@ The CLI prints a summary and report path. Pressing `Ctrl+C` during its processin
 
 ## Recovering failed downloads
 
-PaperHarbor retries transient download failures (HTTP 202/408/425/429 and selected 5xx responses, timeouts, and network errors), with up to two retries and bounded backoff. Numeric `Retry-After` delays up to 30 seconds are honored; longer delays are reported for a later retry. HTTP 401/403 pages are not repeatedly retried. A 202 response is accepted only when its body passes the PDF checks.
+PaperHarbor retries transient download failures (HTTP 202/408/425/429 and selected 5xx responses, timeouts, and network errors), with up to two retries and bounded backoff. Numeric `Retry-After` delays up to 30 seconds are honored; longer delays are reported for a later retry. Both numeric and HTTP-date `Retry-After` values are recognized. HTTP 401/403 pages are not repeatedly retried. Metadata-service HTTP 429 responses start a provider cooldown instead of repeating requests for every reference. A 202 response is accepted only when its body passes the PDF checks.
 
 After the initial candidates fail, discovery queries remaining providers and inspects the publisher page. Landing-page extraction prioritizes article PDF metadata and excludes reference-list PDFs to reduce unrelated downloads. These checks do not verify every PDF's bibliographic identity. Connection attempts are capped at 10 seconds; the default read timeout is 30 seconds.
 
@@ -429,6 +457,7 @@ On macOS/Linux, use `export OPENALEX_API_KEY="YOUR_OPENALEX_KEY"` and `export SE
 | Web UI says no papers selected | Load references, then select individual papers or use **Select all** |
 | Folder picker unavailable | Enter a path manually or install your Python distribution's Tk support |
 | Web port in use | Launch with another port, such as `python web.py --port 9000` |
+| Downloads still use old behavior after updating code | Stop the existing server with `Ctrl+C`, run `python web.py` again, and refresh the browser. Refreshing alone does not reload Python code. The interface displays a restart notice when it detects an older server or changed source files. |
 | `ModuleNotFoundError` | Install requirements with the same interpreter used to run the app |
 
 ## Limitations and data handling

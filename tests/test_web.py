@@ -109,6 +109,16 @@ class TestWebHTTP(unittest.TestCase):
                 self.assertIn(mime, content_type)
                 self.assertTrue(body)
 
+    def test_runtime_detects_changed_source_and_current_server(self):
+        status, _, body = self.request("GET", "/api/runtime")
+        self.assertEqual(status, 200)
+        self.assertFalse(json.loads(body)["restart_required"])
+        with patch.object(web, "runtime_fingerprint", return_value="updated-source"):
+            status, _, body = self.request("GET", "/api/runtime")
+            state = json.loads(body)
+            self.assertTrue(state["restart_required"])
+            self.assertEqual(state["loaded_revision"], web.LOADED_REVISION)
+
     def test_retry_uses_failed_references_and_original_job_settings(self):
         state = web.JobState()
         state.config = {"dest_folder": "saved-folder", "limit": 1, "item_keys": ["done", "failed"]}

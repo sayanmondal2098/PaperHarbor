@@ -4,7 +4,7 @@ import logging
 import re
 from typing import List
 from urllib.parse import urljoin, urlparse, parse_qs, unquote
-from paperharbor.providers.matching import doi_from_url
+from paperharbor.providers.matching import doi_from_url, same_title
 
 import requests
 from bs4 import BeautifulSoup
@@ -89,7 +89,7 @@ class LandingPageResolver:
         self.timeout = timeout
         self.last_error = ""
 
-    def resolve(self, landing_url: str, expected_doi=None) -> List[str]:
+    def resolve(self, landing_url: str, expected_doi=None, expected_title=None) -> List[str]:
         self.last_error = ""
         urls: List[str] = publisher_pdf_variants(landing_url)
         try:
@@ -132,6 +132,18 @@ class LandingPageResolver:
         # Authoritative article metadata takes precedence over PDFs cited in its references.
         if len(urls) > len(publisher_pdf_variants(landing_url)):
             return _dedupe(urls + publisher_pdf_variants(resp.url))[:12]
+        # Author publication lists contain many unrelated PDFs and slide decks.
+        # An exact title link identifies the intended paper without scraping all PDFs.
+        title_links = []
+        if expected_title:
+            for anchor in soup.find_all("a", href=True):
+                target = urljoin(resp.url, anchor["href"])
+                if same_title(expected_title, anchor.get_text(" ", strip=True)) and (
+                    re.search(r"\.pdf($|\?)|/doi/pdf/|/bitstreams?/|/document$", target, re.I)
+                ):
+                    title_links.append(target)
+        if title_links:
+            return _dedupe(title_links)
         for a in soup.find_all("a", href=True):
             href = a["href"]
             text = a.get_text(" ", strip=True).lower()
@@ -157,6 +169,9 @@ class LandingPageResolver:
             if urlparse(target).hostname == urlparse(resp.url).hostname and (re.search(r"\.pdf($|\?)", target, re.I) or "/stampPDF/getPDF.jsp" in target):
                 urls.append(target)
         urls += publisher_pdf_variants(resp.url)
+        if expected_title and len(_dedupe(urls)) > 1 and not publisher_pdf_variants(resp.url):
+            self.last_error = "Multiple PDF links found without article metadata or a matching title; choose a verified direct PDF URL"
+            return []
         if not urls:
             self.last_error = "Article page contained no identifiable PDF download link"
         return _dedupe(urls)[:12]
