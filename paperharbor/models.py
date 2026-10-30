@@ -14,6 +14,8 @@ class PaperStatus(str, Enum):
     DOWNLOAD_FAILED = "DOWNLOAD_FAILED"
     OA_BLOCKED_MANUAL = "OA_BLOCKED_MANUAL"
     ERROR = "ERROR"
+    WEB_RESOURCE = "WEB_RESOURCE"
+    WITHDRAWN = "WITHDRAWN"
 
 
 @dataclass

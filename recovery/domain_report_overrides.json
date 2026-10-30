@@ -1,0 +1,26 @@
+{
+  "10.1037/h0046049": [
+    "https://snap.stanford.edu/class/cs224w-readings/cartwright56balance.pdf"
+  ],
+  "10.1109/ICDCS47774.2020.00171": [
+    "https://orbilu.uni.lu/bitstream/10993/44927/1/PID6431211.pdf"
+  ],
+  "10.1145/3133956.3133982": [
+    "https://acmccs.github.io/papers/p1175-bonawitzA.pdf",
+    "https://eprint.iacr.org/2017/281.pdf"
+  ],
+  "upload-13:temporalSGNN": [
+    "https://arxiv.org/pdf/2605.26290"
+  ],
+  "10.1145/1557019.1557153": [
+    "https://cseweb.ucsd.edu/~jtma/papers/beyondbl-kdd2009.pdf",
+    "https://cseweb.ucsd.edu/~voelker/pubs/mal-url-kdd09.pdf"
+  ],
+  "10.1109/TNSM.2014.2377295": [
+    "https://inria.hal.science/hal-01092771/document",
+    "https://orbilu.uni.lu/bitstream/10993/20053/1/phishStorm-revised.pdf"
+  ],
+  "upload-25:oest2020sunrise": [
+    "https://www.usenix.org/system/files/sec20-oest-sunrise.pdf"
+  ]
+}

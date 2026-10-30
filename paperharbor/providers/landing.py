@@ -3,7 +3,8 @@
 import logging
 import re
 from typing import List
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, parse_qs, unquote
+from paperharbor.providers.matching import doi_from_url
 
 import requests
 from bs4 import BeautifulSoup
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 WILEY_HOST = re.compile(r"(^|\.)onlinelibrary\.wiley\.com$")
 # Publishers whose content is fully open access; a blocked download here is still legal to fetch by hand
-OA_HOSTS = re.compile(r"(^|\.)(mdpi\.com|mdpi-res\.com|frontiersin\.org|plos\.org|biomedcentral\.com|usenix\.org|arxiv\.org|pmc\.ncbi\.nlm\.nih\.gov)$")
+OA_HOSTS = re.compile(r"(^|\.)(dl\.acm\.org|mdpi\.com|mdpi-res\.com|frontiersin\.org|plos\.org|biomedcentral\.com|usenix\.org|arxiv\.org|pmc\.ncbi\.nlm\.nih\.gov|openreview\.net|eprint\.iacr\.org)$")
 
 
 def is_known_oa_host(url: str) -> bool:
@@ -42,14 +43,34 @@ def publisher_pdf_variants(url: str) -> List[str]:
         match = re.search(r"/(?:article|content/pdf)/(10\..+?)(?:\.pdf)?$", parsed.path)
         if match:
             variants.append(f"https://link.springer.com/content/pdf/{match.group(1)}.pdf")
-    elif host == "dl.acm.org":
-        match = re.search(r"/doi/(?:abs/|full/|pdf/)?(10\..+)", parsed.path)
+    elif host in ("dl.acm.org", "www.dl.acm.org"):
+        match = re.search(r"/doi/(?:abs/|full/|fullHtml/|epdf/|pdf/)?(10\.[^\s]+)", unquote(parsed.path), re.I)
         if match:
             variants.append(f"https://dl.acm.org/doi/pdf/{match.group(1)}")
     elif host in ("arxiv.org", "www.arxiv.org"):
         match = re.search(r"/(?:abs|pdf)/(.+?)(?:\.pdf)?$", parsed.path)
         if match:
             variants.append(f"https://arxiv.org/pdf/{match.group(1)}")
+    elif host in ("openreview.net", "www.openreview.net") and parsed.path == "/forum":
+        note_id = parse_qs(parsed.query).get("id", [""])[0]
+        if note_id:
+            from urllib.parse import urlencode
+            variants.append("https://openreview.net/pdf?" + urlencode({"id": note_id}))
+    elif host == "eprint.iacr.org":
+        match = re.fullmatch(r"/(\d{4}/\d+)(?:\.pdf)?/?", parsed.path)
+        if match:
+            variants.append(f"https://eprint.iacr.org/{match.group(1)}.pdf")
+    elif host == "ieeexplore.ieee.org":
+        number = parse_qs(parsed.query).get("arnumber", [""])[0]
+        if not number:
+            match = re.search(r"/(?:abstract/)?document/(\d+)", parsed.path)
+            number = match.group(1) if match else ""
+        if number.isdigit():
+            variants.append(f"https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber={number}")
+    elif host == "hal.science" or host.endswith(".hal.science"):
+        match = re.fullmatch(r"/((?:hal|inria|tel|pastel)-\d+(?:v\d+)?)(?:/document)?/?", parsed.path)
+        if match:
+            variants.append(f"https://{host}/{match.group(1)}/document")
     return variants
 
 
@@ -68,7 +89,7 @@ class LandingPageResolver:
         self.timeout = timeout
         self.last_error = ""
 
-    def resolve(self, landing_url: str) -> List[str]:
+    def resolve(self, landing_url: str, expected_doi=None) -> List[str]:
         self.last_error = ""
         urls: List[str] = publisher_pdf_variants(landing_url)
         try:
@@ -88,6 +109,23 @@ class LandingPageResolver:
             return _dedupe(urls)
 
         soup = BeautifulSoup(resp.text, "html.parser")
+        resolved_doi = doi_from_url(resp.url)
+        if expected_doi and resolved_doi and resolved_doi != expected_doi.lower():
+            self.last_error = f"Rejected redirect with conflicting DOI {resolved_doi}"
+            return []
+        if urlparse(resp.url).hostname in ("arxiv.org", "www.arxiv.org", "export.arxiv.org"):
+            notice = soup.find(string=re.compile(r"this paper has been withdrawn", re.I))
+            if notice:
+                comments = soup.select_one(".comments")
+                reason = comments.get_text(" ", strip=True) if comments else ""
+                self.last_error = "Withdrawn arXiv record: " + str(notice).strip() + (". " + reason if reason else "")
+                return []
+        for meta in soup.find_all("meta", attrs={"name": re.compile(r"^citation_doi$", re.I)}):
+            found = (meta.get("content") or "").strip()
+            found = doi_from_url(found) or found.lower()
+            if expected_doi and found and found != expected_doi.lower():
+                self.last_error = f"Rejected page with conflicting DOI {found}"
+                return []
         for meta in soup.find_all("meta", attrs={"name": re.compile(r"^(citation_pdf_url|wkhealth_pdf_url|eprints.document_url)$", re.I)}):
             if meta.get("content"):
                 urls.append(urljoin(resp.url, meta["content"]))
@@ -106,12 +144,17 @@ class LandingPageResolver:
             same_host = urlparse(target).hostname == urlparse(resp.url).hostname
             pdf_link = bool(re.search(r"\.pdf($|\?)", href, re.I))
             pdf_control = "download pdf" in text or "full text pdf" in text or "view pdf" in text
+            # ORBilu and other repositories often label a file simply "Download".
+            download_control = text == "download" and re.search(r"\.pdf($|\?)|/bitstream/|/bitstreams/", target, re.I)
             repository_file = same_host and ("/bitstreams/" in href or "/bitstream/" in href) and ("download" in text or ".pdf" in text)
-            if (same_host and pdf_link) or pdf_control or repository_file:
+            if (same_host and pdf_link) or pdf_control or repository_file or download_control:
                 urls.append(target)
         for embedded in soup.find_all(["iframe", "embed", "object"]):
-            target = urljoin(resp.url, embedded.get("src") or embedded.get("data") or "")
-            if urlparse(target).hostname == urlparse(resp.url).hostname and re.search(r"\.pdf($|\?)", target, re.I):
+            raw_target = embedded.get("src") or embedded.get("data") or ""
+            # PDF.js uses viewer.html?file=<actual PDF>.
+            file_target = parse_qs(urlparse(raw_target).query).get("file", [""])[0]
+            target = urljoin(resp.url, file_target or raw_target)
+            if urlparse(target).hostname == urlparse(resp.url).hostname and (re.search(r"\.pdf($|\?)", target, re.I) or "/stampPDF/getPDF.jsp" in target):
                 urls.append(target)
         urls += publisher_pdf_variants(resp.url)
         if not urls:

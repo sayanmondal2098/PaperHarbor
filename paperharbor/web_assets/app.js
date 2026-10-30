@@ -339,6 +339,8 @@ const STATUS_LABELS = {
   DOWNLOAD_FAILED: "Download failed",
   OA_BLOCKED_MANUAL: "Open manually",
   ERROR: "Error",
+  WEB_RESOURCE: "Documentation / dataset",
+  WITHDRAWN: "Withdrawn",
 };
 async function poll() {
   try {
@@ -383,12 +385,16 @@ async function poll() {
       (summary.PAYWALLED_OR_OA_NOT_FOUND || 0) +
       (summary.DOWNLOAD_FAILED || 0) +
       (summary.OA_BLOCKED_MANUAL || 0) +
-      (summary.ERROR || 0);
-    $("stats").innerHTML = [
+      (summary.ERROR || 0) +
+      (summary.WITHDRAWN || 0);
+    const statItems = [
       [summary.DOWNLOADED || 0, "Downloaded"],
       [skipped, "Skipped"],
       [review, "Need review"],
-    ]
+    ];
+    if (summary.WEB_RESOURCE)
+      statItems.push([summary.WEB_RESOURCE, "Web resources"]);
+    $("stats").innerHTML = statItems
       .map(
         ([n, label]) =>
           "<div><strong>" + n + "</strong><span>" + label + "</span></div>",

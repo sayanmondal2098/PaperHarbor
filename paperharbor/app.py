@@ -2,6 +2,7 @@
 
 import logging
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -11,7 +12,8 @@ from paperharbor.models import CandidatePDF, DownloadResult, PaperStatus, Refere
 from paperharbor.namer import generate_filename, get_unique_destination_path
 from paperharbor.providers.aggregator import ProviderAggregator
 from paperharbor.reporter import Reporter
-from paperharbor.recovery import recovery_action
+from paperharbor.recovery import recovery_action, web_resource_kind
+from paperharbor.providers.matching import conflicts_with_doi
 from paperharbor.zotero.reader_base import ZoteroReaderBase
 
 logger = logging.getLogger(__name__)
@@ -89,12 +91,26 @@ class PaperHarborApp:
             references = references[:limit]
             logger.info(f"Processing first {len(references)} references (due to --limit {limit}).")
 
+        outcomes = {}
         for idx, ref in enumerate(references, start=1):
             if self.progress_callback:
                 self.progress_callback(idx, len(references), ref, "Processing...")
 
             try:
-                self._process_single_reference(ref)
+                overrides = self.pdf_overrides.get(ref.key) or self.pdf_overrides.get(ref.clean_doi) or []
+                cache_key = (ref.clean_doi.lower(), repr(overrides)) if ref.clean_doi else None
+                cached = outcomes.get(cache_key) if cache_key else None
+                if cached and not (self.skip_zotero_has_pdf and ref.has_zotero_pdf):
+                    status = PaperStatus.SKIPPED_ALREADY_IN_DEST if cached.status == PaperStatus.DOWNLOADED else cached.status
+                    self.reporter.record(replace(cached, reference=ref, status=status,
+                        notes=cached.notes + " Reused the same DOI outcome from this run; duplicate network requests were avoided."))
+                else:
+                    self._process_single_reference(ref)
+                    if cache_key and self.reporter.results and self.reporter.results[-1].reference is ref and self.reporter.results[-1].status in (
+                        PaperStatus.DOWNLOADED, PaperStatus.DOWNLOAD_FAILED, PaperStatus.OA_BLOCKED_MANUAL,
+                        PaperStatus.PAYWALLED_OR_OA_NOT_FOUND, PaperStatus.WITHDRAWN,
+                    ):
+                        outcomes[cache_key] = self.reporter.results[-1]
             except Exception as exc:
                 logger.exception("Reference failed; continuing with the next paper: %s", ref.key)
                 self.reporter.record(DownloadResult(reference=ref, status=PaperStatus.ERROR,
@@ -109,6 +125,12 @@ class PaperHarborApp:
         return report_file
 
     def _process_single_reference(self, ref: Reference):
+        resource_kind = web_resource_kind(ref)
+        if resource_kind:
+            self.reporter.record(DownloadResult(reference=ref, status=PaperStatus.WEB_RESOURCE,
+                publisher_url=ref.url, notes=f"{resource_kind} reference retained as a link; no PDF was requested.",
+                recovery_action=recovery_action("WEB_RESOURCE")))
+            return
         # 1. Check if Zotero already has PDF
         if self.skip_zotero_has_pdf and ref.has_zotero_pdf:
             logger.info(f"[SKIP] '{ref.title[:50]}' already has PDF in Zotero.")
@@ -153,6 +175,7 @@ class PaperHarborApp:
                       for url in preferred] + candidates
         dest_file = get_unique_destination_path(self.dest_folder, desired_filename, ref.clean_doi)
         attempts, blocked = [], []
+        withdrawal_note = ""
         tried, resolved = set(), set()
         discovered = len(candidates)
 
@@ -166,14 +189,30 @@ class PaperHarborApp:
                     blocked.append(candidate.landing_page or candidate.url)
 
         def resolve(candidate):
+            nonlocal withdrawal_note
             if candidate.url in resolved:
                 return []
             resolved.add(candidate.url)
-            urls = self.landing_resolver.resolve(candidate.url)
+            urls = self.landing_resolver.resolve(candidate.url, expected_doi=ref.clean_doi)
+            if self.landing_resolver.last_error.startswith("Withdrawn arXiv record"):
+                withdrawal_note = self.landing_resolver.last_error
+                log_attempt(candidate, "withdrawal", withdrawal_note)
+                return []
+            if self.landing_resolver.last_error.startswith("Rejected page"):
+                log_attempt(candidate, "resolve", self.landing_resolver.last_error)
+                return []
             if not urls:
                 log_attempt(candidate, "resolve", self.landing_resolver.last_error or "No PDF link on article page")
             return [CandidatePDF(url=url, provider=candidate.provider, landing_page=candidate.url,
                 oa_status=candidate.oa_status, version=candidate.version) for url in urls]
+
+        def record_withdrawal():
+            if not withdrawal_note:
+                return False
+            self.reporter.record(DownloadResult(reference=ref, status=PaperStatus.WITHDRAWN,
+                publisher_url=ref.url or ref.publisher_url, notes=withdrawal_note,
+                attempts=attempts, recovery_action=recovery_action("WITHDRAWN")))
+            return True
 
         for phase in range(2):
             if phase:
@@ -183,8 +222,13 @@ class PaperHarborApp:
             pending = list(candidates)
             while pending:
                 candidate = pending.pop(0)
+                if conflicts_with_doi(ref, candidate.url) or conflicts_with_doi(ref, candidate.landing_page):
+                    log_attempt(candidate, "identity", "Rejected candidate with a conflicting DOI")
+                    continue
                 if not candidate.is_direct_pdf:
                     pending.extend(resolve(candidate))
+                    if record_withdrawal():
+                        return
                     continue
                 if candidate.url in tried:
                     continue
@@ -206,10 +250,14 @@ class PaperHarborApp:
                 # A provider's 'PDF URL' can actually be a viewer page. Inspect it once.
                 if "not a valid PDF" in error:
                     pending.extend(resolve(candidate))
+                    if record_withdrawal():
+                        return
                 # A stale PDF URL may have a current replacement on its article page.
                 if candidate.landing_page and candidate.landing_page != candidate.url:
                     pending.extend(resolve(CandidatePDF(url=candidate.landing_page,
                         provider=candidate.provider, oa_status=candidate.oa_status, is_direct_pdf=False)))
+                    if record_withdrawal():
+                        return
 
         for error in self.aggregator.errors:
             attempts.append({"provider": "Discovery", "url": "", "stage": "search", "error": error})

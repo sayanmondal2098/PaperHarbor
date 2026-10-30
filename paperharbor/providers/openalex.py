@@ -12,6 +12,7 @@ import requests
 
 from paperharbor.models import CandidatePDF, Reference
 from paperharbor.providers.base import BaseProvider
+from paperharbor.providers.matching import same_title, doi_from_url
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class OpenAlexProvider(BaseProvider):
 
         # 2. Fallback to search by Title if no DOI or DOI didn't return PDF
         if reference.title and len(reference.title.strip()) > 8:
-            candidates = self._search_by_title(reference.title, reference.first_author)
+            candidates = self._search_by_title(reference.title, reference.first_author, reference.clean_doi)
 
         return candidates
 
@@ -51,13 +52,17 @@ class OpenAlexProvider(BaseProvider):
                 return []
 
             work = resp.json()
+            reported_doi = doi_from_url(work.get("doi"))
+            if reported_doi and reported_doi != doi.lower():
+                self.last_error = "Ignored a DOI lookup that returned a different DOI"
+                return []
             return self._extract_candidates_from_work(work)
 
         except requests.RequestException as e:
             logger.warning(f"[OpenAlex] Request error for DOI {doi}: {e}")
             return []
 
-    def _search_by_title(self, title: str, author: Optional[str] = None) -> List[CandidatePDF]:
+    def _search_by_title(self, title: str, author: Optional[str] = None, expected_doi: Optional[str] = None) -> List[CandidatePDF]:
         # Clean title for OpenAlex search
         clean_title = urllib.parse.quote(title.strip())
         url = f"https://api.openalex.org/works?filter=title.search:{clean_title}&per_page=3"
@@ -75,18 +80,13 @@ class OpenAlexProvider(BaseProvider):
 
             # Check the best match
             for work in results:
-                work_title = (work.get("title") or "").strip().lower()
-                orig_title = title.strip().lower()
-
-                # Basic similarity check: share significant words
-                orig_words = set(w for w in orig_title.split() if len(w) > 3)
-                work_words = set(w for w in work_title.split() if len(w) > 3)
-                if orig_words and work_words:
-                    overlap = len(orig_words & work_words) / len(orig_words)
-                    if overlap >= 0.6:  # 60% key word match
-                        candidates = self._extract_candidates_from_work(work)
-                        if candidates:
-                            return candidates
+                reported_doi = doi_from_url(work.get("doi"))
+                if expected_doi and reported_doi and reported_doi != expected_doi.lower():
+                    continue
+                if same_title(title, work.get("title") or ""):
+                    candidates = self._extract_candidates_from_work(work)
+                    if candidates:
+                        return candidates
 
             return []
 

@@ -4,11 +4,11 @@
 
 <h1 align="center">PaperHarbor</h1>
 <p align="center"><strong>A home for your research PDFs.</strong></p>
-<p align="center">Bulk open-access PDF discovery and downloading for Zotero libraries.</p>
+<p align="center">Open-access PDF discovery for Zotero, BibTeX, and CSL-JSON libraries.</p>
 <p align="center">Created by <a href="https://github.com/sayanmondal2098">Sayan Mondal</a></p>
 <p align="center"><a href="https://sayanmondal2098.github.io">Personal website</a></p>
 
-PaperHarbor reads references from Zotero, finds papers without PDF attachments, searches scholarly sources, and saves available PDFs to a folder you choose. Use the command line for repeatable batches or the local web interface to browse your library and select individual papers.
+PaperHarbor turns a Zotero library, BibTeX bibliography, or CSL-JSON export into an organized collection of available open-access PDFs. Browse references in the local web interface, select papers, and save them to a folder you choose, or use the command line for repeatable batches. Zotero is optional when importing a bibliography or retrying a CSV report.
 
 **Zotero supplies the references; your personal folder receives the downloads.** PaperHarbor does not attach downloaded files to Zotero or update its records. The local database reader queries a temporary copy of the database.
 
@@ -22,6 +22,7 @@ PaperHarbor reads references from Zotero, finds papers without PDF attachments, 
 - [Reference sources](#reference-sources)
 - [Command-line options](#command-line-options)
 - [Usage examples](#usage-examples)
+- [ACM Digital Library and other domains](#acm-digital-library-and-other-domains)
 - [PDF discovery](#pdf-discovery)
 - [Files and naming](#files-and-naming)
 - [CSV reports](#csv-reports)
@@ -38,21 +39,23 @@ PaperHarbor reads references from Zotero, finds papers without PDF attachments, 
 
 | Feature | What it provides |
 | --- | --- |
-| Multiple reference sources | Local `zotero.sqlite`, CSL-JSON, BibTeX, or the Zotero Web API |
+| Multiple reference sources | Local `zotero.sqlite`, CSL-JSON, BibTeX, Zotero Web API, or unresolved rows from a previous CSV report |
 | Personal and group libraries | API access using a user ID or a group ID |
 | Missing-PDF detection | Checks attachment metadata and skips items already marked as having PDFs by default |
-| Multiple discovery providers | Unpaywall, OpenAlex, arXiv, Europe PMC, Semantic Scholar, and Crossref |
+| Multiple discovery providers | ACM Digital Library, Unpaywall, OpenAlex, arXiv, Europe PMC, Semantic Scholar, and Crossref |
 | Landing-page resolution | Attempts to extract PDF links from article pages and stored Zotero URLs |
 | Download checks | Looks for a `%PDF-` header in the first 1,024 bytes and rejects downloads smaller than 1,024 bytes |
 | Organized filenames | Configurable year, author, and title templates with filename sanitization |
-| Local web interface | Library search, collection filtering, paper selection, progress, results, and logs |
+| Local web interface | Direct file uploads, library search, collection filters, Select all / Unselect all, progress, results, and logs |
 | CSV reporting | Per-reference status, provider, saved path, URLs, and diagnostic notes |
-| Manual follow-up | Records a browser link when an apparent open-access copy blocks automated downloading |
+| Automatic recovery | Bounded retries, expanded provider searches, alternate PDF links, and CSV report retries |
+| Manual follow-up | Publisher/repository links, suggested filenames, and per-URL attempt details |
+| Reference checks | Rejects conflicting DOI matches, recognizes selected web resources, and records arXiv withdrawal notices |
 
 ## How it works
 
 ```text
-Local Zotero database / exported references / Zotero Web API
+Zotero database / BibTeX or CSL-JSON / Web API / CSV retry report
                            |
                     Read reference metadata
                            |
@@ -72,7 +75,7 @@ Each reference receives an outcome in the report, including references skipped b
 ## Requirements and installation
 
 - **Python 3.8 or later.** The project does not currently declare a tested Python-version matrix.
-- A local Zotero database, supported reference export, or credentials for a Zotero API library.
+- A local Zotero database, supported bibliography file, previous PaperHarbor report, or credentials for a Zotero API library.
 - An internet connection for provider searches and downloads.
 - A writable destination folder.
 
@@ -127,6 +130,14 @@ The package entry point is equivalent:
 python -m paperharbor --dest-folder "D:\Research\Papers" --limit 5
 ```
 
+### Start from a BibTeX file without Zotero
+
+```powershell
+python main.py --export-file "references.bib" --dest-folder "D:\Research\Papers"
+```
+
+Or run `python web.py`, choose **Upload bibliography / retry report**, and select or drop your file. References load automatically for selection.
+
 ## Web interface
 
 Launch the browser interface:
@@ -138,10 +149,10 @@ python web.py
 The server opens your default browser at **http://127.0.0.1:8765/** and binds to `127.0.0.1` only.
 
 1. Enter a destination folder or choose **Browse...**.
-2. Choose the local database, an export file, or the Zotero Web API as your source.
+2. Choose a local Zotero database, bibliography/report upload, local export path, or the Zotero Web API.
 3. Fill in the source path or credentials. Leave the SQLite path blank for automatic detection.
 4. Optionally set a contact email, reference limit, filename template, or download overrides.
-5. Click **Load references**, or choose **Upload a bibliography** and select/drop a `.bib`, `.bibtex`, or CSL-JSON `.json` file. Uploads up to 5 MB load automatically; Zotero is not required for this source.
+5. Click **Load references**, or choose **Upload bibliography / retry report** and select/drop a `.bib`, `.bibtex`, CSL-JSON `.json`, or PaperHarbor `.csv` report. Uploads up to 5 MB load automatically; Zotero is not required for this source.
 6. Filter by collection, search by title / author / DOI, and select papers individually. **Select all** selects every loaded reference, including those hidden by filters; **Unselect all** clears the entire selection. **Select shown** and the table header checkbox affect only visible references.
 7. Click **Download N selected references** and follow the progress, per-paper outcomes, activity log, and final CSV report path. Optional settings are under **Download settings**.
 
@@ -198,7 +209,7 @@ python main.py -d "D:\Research\Papers" --api-key "YOUR_ZOTERO_API_KEY" --user-id
 python main.py -d "D:\Research\Papers" --api-key "YOUR_ZOTERO_API_KEY" --group-id "YOUR_GROUP_ID"
 ```
 
-Supply only the appropriate ID; if both are given, the user library takes precedence. The reader retrieves item and attachment metadata rather than downloading Zotero's stored attachments.
+Supply only the appropriate ID. The web interface requires one ID; on the CLI, the user library takes precedence if both are supplied. The reader retrieves item and attachment metadata rather than downloading Zotero's stored attachments.
 
 If multiple source options are supplied, selection follows this order: **export file → API key → local SQLite database**.
 
@@ -261,10 +272,25 @@ python main.py -d "D:\Research\Papers" --force-redownload --verbose
 
 `--force-redownload` bypasses destination skipping. Existing filenames still receive numeric suffixes for new downloads; this flag does not overwrite them. It also does not override the Zotero-attachment skip rule, so combine it with `--include-zotero-has-pdf` when needed.
 
+## ACM Digital Library and other domains
+
+ACM articles are recognized automatically from `10.1145/...` DOIs and `dl.acm.org` article URLs in Zotero or uploaded exports. A dedicated **ACM Digital Library** provider tries the article PDF and ePDF viewer routes. Legacy ACM citation links can be resolved when their article metadata or redirects are available. No separate ACM API key is required.
+
+Crossref PDF links are accepted when their URL identifies a PDF, including ACM links whose content type is `unspecified`. If ACM returns HTTP 403, PaperHarbor tries other available sources and offers the ACM article link for normal browser access. This support does not bypass site controls or guarantee automated access. See [ACM's open-access information](https://www.acm.org/publications/openaccess).
+
+Supported URL forms also include IEEE article/viewer URLs, OpenReview forum-to-PDF links, IACR ePrint links, HAL repository document links, repository download buttons, and same-host PDF.js viewers. Requests identify the downloader as PaperHarbor.
+
+Title searches use conservative normalized matching. A title-search result, publisher redirect, candidate DOI URL, or article `citation_doi` that contradicts the reference DOI is rejected. This reduces the risk of downloading a similarly titled but different paper. Review title-only matches and author manuscript versions before citing.
+
+Flower documentation, Kafka documentation, UCI dataset pages, and explicitly typed datasets are recorded as **`WEB_RESOURCE`** when recognized. Their links remain available; they are not described as paywalled PDFs. New reports retain `Original_URL` and `Item_Type` so future retries keep that context. Older reports with missing source URLs require the original bibliography or corrected metadata.
+
+When an arXiv landing page explicitly marks a paper withdrawn, the run records **`WITHDRAWN`**, preserves the notice, and stops recovery for that reference. These entries are not included in the default failed/manual retry action. Duplicate DOI outcomes are reused within a batch to avoid repeated downloads or repeated failing requests; attachment skip decisions are not reused for unattached references.
+
 ## PDF discovery
 
 | Source | Role |
 | --- | --- |
+| ACM Digital Library | Resolves ACM DOIs and article URLs to article PDF/ePDF candidates |
 | arXiv | Resolves identifiers from metadata and supports title-based discovery |
 | Unpaywall | Looks up open-access locations by DOI |
 | OpenAlex | Looks up works by DOI, with title-search fallback |
@@ -273,7 +299,7 @@ python main.py -d "D:\Research\Papers" --force-redownload --verbose
 | Crossref | Examines DOI metadata for full-text links |
 | Stored Zotero URL | Tries publisher PDF URL variants and landing-page link extraction |
 
-The aggregator uses conditional fallbacks. An arXiv DOI is checked first; otherwise Unpaywall and OpenAlex are early discovery sources. Additional providers are queried when direct candidates are insufficient or unavailable. Every provider is not queried for every reference.
+The aggregator uses conditional fallbacks. It first recognizes ACM references, prioritizes explicit arXiv DOIs, and uses Unpaywall and OpenAlex as early discovery sources. When initial downloads fail, it queries providers skipped by the first pass and inspects the publisher page. A successful early download avoids unnecessary searches.
 
 Candidate URLs are deduplicated and direct PDF candidates are ordered before landing pages. Article pages are inspected for PDF links, and downloads are attempted until one succeeds. A failed search does not establish that a paper is paywalled: missing metadata or provider failures can also prevent discovery.
 
@@ -322,6 +348,12 @@ Each completed run writes `paperharbor_report_YYYYMMDD_HHMMSS.csv` to the destin
 | `PDF_URL` | URL used for a successful download |
 | `Publisher_Or_Landing_URL` | Publisher, DOI, or manual-access link |
 | `Notes` | Outcome explanation or diagnostic details |
+| `Attempt_Count` | Number of recorded discovery, resolution, download, or identity-check events |
+| `Attempt_Log` | JSON array of attempted URLs, providers, stages, and errors/outcomes |
+| `Recovery_Action` | Suggested next step for the outcome |
+| `Suggested_Filename` | Filename to use when saving an unresolved paper manually |
+| `Original_URL` | URL from the input reference |
+| `Item_Type` | Reference type retained for future retries |
 
 ### Status meanings
 
@@ -333,15 +365,17 @@ Each completed run writes `paperharbor_report_YYYYMMDD_HHMMSS.csv` to the destin
 | `PAYWALLED_OR_OA_NOT_FOUND` | No candidate located; check the landing page or reference metadata |
 | `DOWNLOAD_FAILED` | Candidates found, but none downloaded successfully; inspect `Notes` |
 | `OA_BLOCKED_MANUAL` | An apparent open-access copy blocked automation or returned non-PDF content; try the recorded browser link |
-| `ERROR` | Reserved status defined by the data model and counted by the reporter; per-reference exceptions are recorded and later references continue |
+| `ERROR` | A reference raised an unexpected error; later references continue |
+| `WEB_RESOURCE` | Recognized documentation or a dataset page; open its retained link |
+| `WITHDRAWN` | The arXiv landing page marks the work withdrawn; inspect the notice before use |
 
 The CLI prints a summary and report path. Pressing `Ctrl+C` during its processing loop writes a partial report of completed outcomes. Normal completion returns exit code `0` even if individual downloads fail; inspect the CSV. Initialization/fatal failures return `1`, and handled cancellation returns `130`.
 
 ## Recovering failed downloads
 
-PaperHarbor now retries transient download failures (HTTP 202/408/425/429 and selected 5xx responses, timeouts, and network errors), with up to two retries and bounded backoff. Numeric `Retry-After` delays up to 30 seconds are honored; longer delays are reported for a later retry. HTTP 401/403 pages are not repeatedly retried. A 202 response is accepted only when its body passes the PDF checks.
+PaperHarbor retries transient download failures (HTTP 202/408/425/429 and selected 5xx responses, timeouts, and network errors), with up to two retries and bounded backoff. Numeric `Retry-After` delays up to 30 seconds are honored; longer delays are reported for a later retry. HTTP 401/403 pages are not repeatedly retried. A 202 response is accepted only when its body passes the PDF checks.
 
-After the initial candidates fail, discovery queries remaining providers and inspects the publisher page. Landing-page extraction prioritizes article PDF metadata and excludes reference-list PDFs; this prevents the unrelated cited-report download found in the audited report. This improves matching but does not verify every PDF's bibliographic identity.
+After the initial candidates fail, discovery queries remaining providers and inspects the publisher page. Landing-page extraction prioritizes article PDF metadata and excludes reference-list PDFs to reduce unrelated downloads. These checks do not verify every PDF's bibliographic identity. Connection attempts are capped at 10 seconds; the default read timeout is 30 seconds.
 
 In the web UI, upload a previous PaperHarbor `.csv` report to load only failed/manual/error rows. Optionally include no-copy-found rows. Paste a verified alternate PDF URL under **Use another PDF link** for a reference, or use **Retry failed / manual entries** after a job. Expand **Attempt details** to inspect provider names, attempted URLs, errors, and the suggested next action. Browser downloads can be saved using the displayed suggested filename.
 
@@ -349,16 +383,36 @@ CLI report retry:
 
 ```powershell
 python main.py --retry-report "previous_report.csv" -d "D:\Research\Papers"
-python main.py --retry-report "previous_report.csv" --retry-not-found -d "D:\Research\Papers" --pdf-overrides "recovery/verified_pdf_overrides.json"
+python main.py --retry-report "previous_report.csv" --retry-not-found -d "D:\Research\Papers" --pdf-overrides "pdf_overrides.json"
 ```
 
-An override JSON file maps item keys or DOIs to one http(s) URL or a list of URLs. Overrides are tried before discovered candidates, but normal existing-file skips still apply. Use `--force-redownload` when intentionally fetching another copy.
+Create your own `pdf_overrides.json` using verified URLs for the papers you want to retry. Keys are exact item keys or DOIs; values can be one HTTP(S) URL or an ordered list. For example, with placeholder links:
 
-New report fields are `Attempt_Count`, `Attempt_Log` (JSON), `Recovery_Action`, and `Suggested_Filename`. Provider errors are retained rather than being treated as proof that a paper is paywalled. Individual reference exceptions no longer stop the rest of a batch.
+```json
+{
+  "YOUR_ITEM_KEY": "https://repository.example.org/paper.pdf",
+  "10.1234/example-doi": [
+    "https://authors.example.org/manuscript.pdf",
+    "https://repository.example.org/alternate.pdf"
+  ]
+}
+```
+
+Replace the placeholders with real identifiers and matching paper URLs before running. Overrides are attempted before discovered candidates, but normal existing-file skips still apply. Use `--force-redownload` when intentionally fetching another copy; the existing file is preserved.
+
+Reports retain per-URL diagnostics and provider errors rather than treating failed discovery as proof that a paper is paywalled. Individual reference exceptions are recorded, and processing continues with the next reference.
 
 Optional `OPENALEX_API_KEY` and `SEMANTIC_SCHOLAR_API_KEY` environment variables enable authenticated metadata requests. Keys are sent only to their respective provider hosts; restart the web server after setting them. See [OpenAlex authentication](https://help.openalex.org/api/authentication/) and [Semantic Scholar API documentation](https://api.semanticscholar.org/api-docs/snippets) for obtaining and using keys.
 
-See the [report audit and recovered-paper sources](recovery/REPORT_RECOVERY.md) for the nine failed/manual entries investigated on 30 October 2026, including a correction for an unrelated PDF in the original output.
+Set optional credentials in the terminal used to launch PaperHarbor:
+
+```powershell
+$env:OPENALEX_API_KEY = "YOUR_OPENALEX_KEY"
+$env:SEMANTIC_SCHOLAR_API_KEY = "YOUR_SEMANTIC_SCHOLAR_KEY"
+python web.py
+```
+
+On macOS/Linux, use `export OPENALEX_API_KEY="YOUR_OPENALEX_KEY"` and `export SEMANTIC_SCHOLAR_API_KEY="YOUR_SEMANTIC_SCHOLAR_KEY"` before launching. Keys are optional and do not grant publisher access.
 
 ## Troubleshooting
 
@@ -421,7 +475,7 @@ Install runtime dependencies, then run the existing suite from the repository ro
 python -m unittest discover -s tests -v
 ```
 
-The suite covers filename generation, export parsing, SQLite reading, provider behavior, downloading, reporting, and an integration workflow. Network interactions are mocked; passing tests do not establish live provider availability.
+The suite covers filename generation, export parsing, SQLite reading, ACM and other providers, DOI identity checks, download retries, web-resource/withdrawal handling, CSV report imports, HTTP endpoints, and integration workflows. Network interactions are mocked; passing tests do not establish live provider availability.
 
 Check launcher options with:
 

@@ -6,6 +6,8 @@ import requests
 
 from paperharbor.models import CandidatePDF, Reference
 from paperharbor.providers.arxiv import ArxivProvider
+from paperharbor.providers.acm import AcmProvider
+from paperharbor.providers.matching import conflicts_with_doi
 from paperharbor.providers.landing import publisher_pdf_variants
 from paperharbor.providers.crossref import CrossrefProvider
 from paperharbor.providers.europe_pmc import EuropePmcProvider
@@ -32,6 +34,7 @@ class ProviderAggregator:
         self.europe_pmc = EuropePmcProvider(email=self.email, session=self.session)
         self.semantic_scholar = SemanticScholarProvider(email=self.email, session=self.session)
         self.crossref = CrossrefProvider(email=self.email, session=self.session)
+        self.acm = AcmProvider(email=self.email, session=self.session)
         self._queried = set()
         self.errors = []
 
@@ -54,7 +57,7 @@ class ProviderAggregator:
     def find_fallback_candidates(self, reference):
         """After downloads fail, query every provider that the fast search skipped."""
         candidates = []
-        for provider in (self.openalex, self.europe_pmc, self.arxiv, self.semantic_scholar, self.crossref):
+        for provider in (self.acm, self.openalex, self.europe_pmc, self.arxiv, self.semantic_scholar, self.crossref):
             if provider.name not in self._queried:
                 candidates.extend(self._search(provider, reference))
         if reference.publisher_url:
@@ -79,12 +82,17 @@ class ProviderAggregator:
         # Helper to add unique candidates
         def add_candidates(found: List[CandidatePDF]):
             for c in found:
+                if conflicts_with_doi(reference, c.url):
+                    self.errors.append(f"{c.provider}: ignored candidate with a conflicting DOI: {c.url}")
+                    continue
                 if c.url and c.url not in seen_urls:
                     seen_urls.add(c.url)
                     candidates.append(c)
 
         def direct():
             return [c for c in candidates if c.is_direct_pdf]
+
+        add_candidates(self._search(self.acm, reference))
 
         # 1. Check arXiv first if arXiv DOI or preprint
         if reference.doi and "arxiv" in reference.doi.lower():
@@ -124,7 +132,7 @@ class ProviderAggregator:
             add_candidates(self._search(self.crossref, reference))
 
         # Last resort: the URL stored in Zotero (e.g. a Wiley /epdf/ viewer link) and its PDF form
-        if reference.url and reference.url.startswith("http"):
+        if reference.url and reference.url.startswith("http") and not conflicts_with_doi(reference, reference.url):
             for u in publisher_pdf_variants(reference.url):
                 add_candidates([CandidatePDF(url=u, provider="Zotero URL", landing_page=reference.url, is_direct_pdf=True)])
             add_candidates([CandidatePDF(url=reference.url, provider="Zotero URL", landing_page=reference.url, is_direct_pdf=False)])

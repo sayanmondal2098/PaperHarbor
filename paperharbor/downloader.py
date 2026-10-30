@@ -12,9 +12,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36 (PaperHarbor/1.0)"
+    "PaperHarbor/1.0 (+https://github.com/sayanmondal2098/PaperHarbor)"
 )
 
 
@@ -23,6 +21,7 @@ class PdfDownloader:
 
     def __init__(self, timeout: int = 30, user_agent: Optional[str] = None, retries: int = 2):
         self.timeout = timeout
+        self.connect_timeout = min(10, timeout)
         self.retries = max(0, retries)
         self.retry_after = None
         self.session = requests.Session()
@@ -81,7 +80,7 @@ class PdfDownloader:
         try:
             logger.debug(f"Attempting download from: {url}")
             headers = {"Referer": referer} if referer else {}
-            with self.session.get(url, stream=True, timeout=self.timeout, allow_redirects=True, headers=headers) as resp:
+            with self.session.get(url, stream=True, timeout=(self.connect_timeout, self.timeout), allow_redirects=True, headers=headers) as resp:
                 retry_after = resp.headers.get("Retry-After")
                 if isinstance(retry_after, str) and retry_after.isdigit():
                     self.retry_after = float(retry_after)
@@ -125,6 +124,10 @@ class PdfDownloader:
             shutil.move(str(temp_file), str(destination_path))
             return True, total_bytes, None
 
+        except requests.ConnectTimeout:
+            if temp_file.exists():
+                temp_file.unlink()
+            return False, 0, f"Connection timed out after {self.connect_timeout}s; host is unreachable"
         except requests.Timeout:
             if temp_file.exists():
                 temp_file.unlink()

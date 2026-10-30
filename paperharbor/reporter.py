@@ -29,6 +29,8 @@ CSV_HEADERS = [
     "Attempt_Log",
     "Recovery_Action",
     "Suggested_Filename",
+    "Original_URL",
+    "Item_Type",
 ]
 
 
@@ -77,6 +79,8 @@ class Reporter:
                     "Attempt_Log": json.dumps(res.attempts, ensure_ascii=False),
                     "Recovery_Action": res.recovery_action,
                     "Suggested_Filename": res.suggested_filename or res.saved_filename or "",
+                    "Original_URL": ref.url or "",
+                    "Item_Type": ref.item_type,
                 }
                 writer.writerow(row)
 
@@ -94,6 +98,8 @@ class Reporter:
             PaperStatus.DOWNLOAD_FAILED.value: 0,
             PaperStatus.OA_BLOCKED_MANUAL.value: 0,
             PaperStatus.ERROR.value: 0,
+            PaperStatus.WEB_RESOURCE.value: 0,
+            PaperStatus.WITHDRAWN.value: 0,
         }
 
         for res in self.results:

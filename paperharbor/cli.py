@@ -257,6 +257,8 @@ def run_cli(args: Optional[list] = None) -> int:
         print(f"  - Paywalled / No OA Found:        {summary[PaperStatus.PAYWALLED_OR_OA_NOT_FOUND.value]}")
         print(f"  - Download Attempt Failed:        {summary[PaperStatus.DOWNLOAD_FAILED.value]}")
         print(f"  - Open manually:                  {summary[PaperStatus.OA_BLOCKED_MANUAL.value]}")
+        print(f"  - Documentation / datasets:       {summary[PaperStatus.WEB_RESOURCE.value]}")
+        print(f"  - Withdrawn papers:                {summary[PaperStatus.WITHDRAWN.value]}")
         if summary.get(PaperStatus.ERROR.value, 0) > 0:
             print(f"  - Errors encountered:             {summary[PaperStatus.ERROR.value]}")
         print("-" * 60)

@@ -857,3 +857,22 @@ footer a {
   font-size: 10px;
   color: var(--muted);
 }
+
+.WEB_RESOURCE {
+  background: #e9effc;
+  color: #4f6387;
+}
+
+.stats:has(> div:nth-child(4)) {
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 740px) {
+  .stats:has(> div:nth-child(4)) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.WITHDRAWN {
+  background: #fceaea;
+  color: #ab5151;
+}

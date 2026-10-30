@@ -13,6 +13,7 @@ import requests
 
 from paperharbor.models import CandidatePDF, Reference
 from paperharbor.providers.base import BaseProvider
+from paperharbor.providers.matching import same_title
 
 logger = logging.getLogger(__name__)
 
@@ -100,17 +101,12 @@ class ArxivProvider(BaseProvider):
                     et_clean = re.sub(r"\s+", " ", entry_title.text.strip().lower())
                     ref_clean = re.sub(r"\s+", " ", title.strip().lower())
 
-                    # Compare token similarity
-                    words1 = set(w for w in ref_clean.split() if len(w) > 3)
-                    words2 = set(w for w in et_clean.split() if len(w) > 3)
-                    if words1 and words2:
-                        overlap = len(words1 & words2) / len(words1)
-                        if overlap >= 0.7:  # 70% word match
-                            id_elem = entry.find("atom:id", ns)
-                            if id_elem is not None and id_elem.text:
-                                match = ARXIV_ID_REGEX.search(id_elem.text)
-                                if match:
-                                    return match.group(1)
+                    if same_title(ref_clean, et_clean):
+                        id_elem = entry.find("atom:id", ns)
+                        if id_elem is not None and id_elem.text:
+                            match = ARXIV_ID_REGEX.search(id_elem.text)
+                            if match:
+                                return match.group(1)
 
             return None
         except Exception as e:

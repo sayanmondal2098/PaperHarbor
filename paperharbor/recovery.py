@@ -2,7 +2,7 @@
 
 import csv
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from paperharbor.models import Reference
 from paperharbor.zotero.reader_base import ZoteroReaderBase
@@ -32,14 +32,17 @@ class ReportReader(ZoteroReaderBase):
                 references.append(Reference(
                     key=row["Item_Key"] or f"report-{index + 1}",
                     title=row["Title"], doi=row["DOI"] or None,
+                    item_type=row.get("Item_Type") or "journalArticle",
                     first_author=row.get("First_Author", ""),
                     year=int(year) if year.isdigit() else None,
-                    url=row.get("Publisher_Or_Landing_URL") or None,
+                    url=row.get("Original_URL") or row.get("Publisher_Or_Landing_URL") or None,
                 ))
         return references
 
 
 def recovery_links(reference):
+    if web_resource_kind(reference):
+        return [{"label": "Open documentation / dataset", "url": reference.url}]
     query = quote(reference.clean_doi or reference.title)
     links = [
         {"label": "Search Scholar", "url": f"https://scholar.google.com/scholar?q={query}"},
@@ -47,10 +50,16 @@ def recovery_links(reference):
     ]
     if reference.publisher_url:
         links.insert(0, {"label": "Publisher / repository", "url": reference.publisher_url})
+    if reference.clean_doi and reference.clean_doi.lower().startswith("10.1145/"):
+        links.insert(0, {"label": "ACM Digital Library", "url": f"https://dl.acm.org/doi/{reference.clean_doi}"})
     return links
 
 
 def recovery_action(status, errors=""):
+    if status == "WITHDRAWN":
+        return "The source marks this work withdrawn. Read the withdrawal notice before using or citing it; automatic recovery stopped."
+    if status == "WEB_RESOURCE":
+        return "Open the documentation or dataset page. This reference is a web resource, not a missing research PDF."
     if status == "DOWNLOADED":
         return "PDF saved. Verify its title/version before citing."
     if status.startswith("SKIPPED"):
@@ -64,3 +73,19 @@ def recovery_action(status, errors=""):
     if status == "PAYWALLED_OR_OA_NOT_FOUND":
         return "Verify DOI/title, search for an author manuscript, or request the paper through your library or author."
     return "Inspect the attempt details, retry later, or use a verified repository PDF URL. Check destination permissions if saving failed."
+
+
+def web_resource_kind(reference):
+    """Recognize explicit datasets/documentation without declaring article pages non-PDF."""
+    parsed = urlsplit(reference.url or "")
+    if parsed.scheme not in ("http", "https") or parsed.path.lower().endswith(".pdf"):
+        return None
+    host = (parsed.hostname or "").lower()
+    if host == "archive.ics.uci.edu" and parsed.path.startswith("/dataset/"):
+        return "Dataset"
+    if reference.item_type.lower() == "dataset" and not reference.clean_doi:
+        return "Dataset"
+    if ((host == "flower.ai" and parsed.path.startswith("/docs/"))
+            or (host == "kafka.apache.org" and ("/operations/" in parsed.path or "/documentation" in parsed.path))):
+        return "Documentation"
+    return None
