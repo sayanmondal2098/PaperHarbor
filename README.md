@@ -139,13 +139,13 @@ The server opens your default browser at **http://127.0.0.1:8765/** and binds to
 2. Choose the local database, an export file, or the Zotero Web API as your source.
 3. Fill in the source path or credentials. Leave the SQLite path blank for automatic detection.
 4. Optionally set a contact email, reference limit, filename template, or download overrides.
-5. Click **Connect & browse library** to load references.
-6. Filter by collection, search by title / author / DOI, and select papers individually or with **Select shown**.
-7. Click **Start download** and follow the progress, per-paper outcomes, logs, and final CSV report path.
+5. Click **Load references**, or choose **Upload a bibliography** and select/drop a `.bib`, `.bibtex`, or CSL-JSON `.json` file. Uploads up to 5 MB load automatically; Zotero is not required for this source.
+6. Filter by collection, search by title / author / DOI, and select papers individually. **Select all** selects every loaded reference, including those hidden by filters; **Unselect all** clears the entire selection. **Select shown** and the table header checkbox affect only visible references.
+7. Click **Download N selected references** and follow the progress, per-paper outcomes, activity log, and final CSV report path. Optional settings are under **Download settings**.
 
-The library browser initially shows only references without a Zotero PDF. After browsing, select at least one paper before starting. To process the whole library without selecting papers, start without browsing; reload the page first if you already loaded a library.
+The library browser initially shows only references without a PDF attachment. Load references and select at least one paper before downloading. To process the full library, use **Select all**. Uploads are parsed through temporary files that are removed after reading; their reference data remains in memory for the job.
 
-To fetch items that already have a Zotero PDF, enable **Also fetch items that already have a Zotero PDF** as well as showing those items in the library browser.
+To fetch items already marked as having a PDF, enable **Include references with an existing PDF attachment** under Download settings. Changing the source clears the old selection so references from different sources are not mixed.
 
 Choose another port or suppress automatic browser opening:
 
@@ -344,7 +344,7 @@ The CLI prints a summary and report path. Pressing `Ctrl+C` during its processin
 | Timeouts or rate limits | Try a smaller batch later; use `--verbose` for diagnostics |
 | API authentication fails | Verify key, read permissions, and appropriate user/group ID |
 | Collection filter has no effect with an export | Export the desired collection; export files are not collection-filtered |
-| Web UI says no papers selected | Select papers after browsing, or reload and start without browsing |
+| Web UI says no papers selected | Load references, then select individual papers or use **Select all** |
 | Folder picker unavailable | Enter a path manually or install your Python distribution's Tk support |
 | Web port in use | Launch with another port, such as `python web.py --port 9000` |
 | `ModuleNotFoundError` | Install requirements with the same interpreter used to run the app |
@@ -375,6 +375,7 @@ PaperHarbor/
 │   ├── app.py                # Processing pipeline
 │   ├── cli.py                # Arguments, logging, and summary
 │   ├── web.py                # HTTP server and browser interface
+│   ├── web_assets/           # Browser HTML, CSS, and JavaScript
 │   ├── models.py             # References, candidates, and outcomes
 │   ├── downloader.py         # Streaming downloads and PDF checks
 │   ├── namer.py              # Filename sanitization and collisions

@@ -18,6 +18,90 @@ logger = logging.getLogger(__name__)
 YEAR_REGEX = re.compile(r"\b(18\d\d|19\d\d|20\d\d)\b")
 
 
+def _bibtex_entries(content):
+    """Read nested braced/quoted fields and bare values without splitting at @ in URLs."""
+    position = 0
+    entry_pattern = re.compile(r"@(\w+)\s*([{(])")
+    while True:
+        match = entry_pattern.search(content, position)
+        if not match:
+            return
+        kind = match.group(1)
+        opener = match.group(2)
+        closer = "}" if opener == "{" else ")"
+        start = match.end()
+        depth, quoted, escaped = 0, False, False
+        end = start
+        while end < len(content):
+            char = content[end]
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"' and depth == 0:
+                quoted = not quoted
+            elif not quoted:
+                if char == closer and depth == 0:
+                    break
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+            end += 1
+        if end == len(content):
+            raise ValueError("Incomplete BibTeX entry. Check closing braces or quotes.")
+        position = end + 1
+        if kind.lower() in ("comment", "preamble", "string"):
+            continue
+        body = content[start:end]
+        key, separator, body = body.partition(",")
+        if not separator or not key.strip():
+            continue
+        fields = {}
+        index = 0
+        while index < len(body):
+            if body[index].isspace() or body[index] == ",":
+                index += 1
+                continue
+            if body[index] == "%":
+                newline = body.find("\n", index)
+                index = len(body) if newline < 0 else newline + 1
+                continue
+            field = re.match(r"(\w+)\s*=\s*", body[index:])
+            if not field:
+                break
+            index += field.end()
+            if index >= len(body):
+                break
+            delimiter = body[index]
+            if delimiter in ('{', '"'):
+                index += 1
+                value_start = index
+                nesting, escaped = 0, False
+                while index < len(body):
+                    char = body[index]
+                    if escaped:
+                        escaped = False
+                    elif char == "\\":
+                        escaped = True
+                    elif char == "{":
+                        nesting += 1
+                    elif char == "}" and nesting:
+                        nesting -= 1
+                    elif nesting == 0 and char == ("}" if delimiter == "{" else '"'):
+                        break
+                    index += 1
+                value = body[value_start:index]
+                index += 1
+            else:
+                value_start = index
+                while index < len(body) and body[index] != ",":
+                    index += 1
+                value = body[value_start:index]
+            fields[field.group(1).lower()] = value.strip()
+        yield kind, key.strip(), fields
+
+
 class ZoteroExportReader(ZoteroReaderBase):
     """Parses references from CSL-JSON or BibTeX files exported from Zotero."""
 
@@ -106,17 +190,9 @@ class ZoteroExportReader(ZoteroReaderBase):
         with open(self.file_path, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
 
-        # Split entries by @type{key, ...}
-        entries = re.findall(r"@(\w+)\s*\{\s*([^,]+),([^@]*)\}", content, re.DOTALL)
         references: List[Reference] = []
 
-        for item_type, key, body in entries:
-            key = key.strip()
-            
-            # Simple field extractor
-            fields: dict = {}
-            for match in re.finditer(r'(\w+)\s*=\s*[{"](.*?)[}"]\s*(?:,|$)', body, re.DOTALL):
-                fields[match.group(1).lower()] = match.group(2).strip()
+        for item_type, key, fields in _bibtex_entries(content):
 
             title = fields.get("title", "")
             # Clean bibtex braces from title

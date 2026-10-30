@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PaperHarbor · Research library</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/"
+          ><img src="/logo.svg" width="48" height="48" alt="" /><span
+            >PaperHarbor<small>YOUR RESEARCH, ANCHORED.</small></span
+          ></a
+        >
+        <span class="local"><span></span> Local workspace</span>
+      </header>
+      <main>
+        <section class="intro">
+          <div class="eyebrow">FROM REFERENCES TO READING</div>
+          <h1>Bring your papers home.</h1>
+          <p>
+            Connect Zotero or drop in a bibliography. Find open-access PDFs<br
+              class="desktop"
+            />
+            and collect them in a folder of your own.
+          </p>
+        </section>
+        <div class="workspace">
+          <aside class="card setup">
+            <div class="section-heading">
+              <span class="step">01</span>
+              <div>
+                <h2>Your sources</h2>
+                <p>Where should we look?</p>
+              </div>
+            </div>
+            <fieldset id="source_fields">
+              <label for="src">Reference source</label>
+              <select id="src">
+                <option value="sqlite">Zotero · local library</option>
+                <option value="upload">Upload a bibliography</option>
+                <option value="export">Export file · local path</option>
+                <option value="api">Zotero · Web API</option>
+              </select>
+              <div id="f_sqlite" class="source-panel">
+                <label for="zotero_path"
+                  >Zotero database path <span>optional</span></label
+                ><input
+                  id="zotero_path"
+                  type="text"
+                  placeholder="Auto-detect zotero.sqlite"
+                />
+                <p class="hint">Leave blank to find your default library.</p>
+              </div>
+              <div id="f_upload" class="source-panel" hidden>
+                <label class="dropzone" id="dropzone" for="bib_file"
+                  ><span class="upload-icon" aria-hidden="true">↑</span
+                  ><strong>Choose a bibliography</strong
+                  ><span>or drag and drop it here</span
+                  ><small>.bib · .bibtex · .json — up to 5 MB</small
+                  ><input id="bib_file" type="file" accept=".bib,.bibtex,.json"
+                /></label>
+                <p id="upload_info" class="hint" aria-live="polite">
+                  Reference details load automatically after upload.
+                </p>
+              </div>
+              <div id="f_export" class="source-panel" hidden>
+                <label for="export_file">Export file path</label
+                ><input
+                  type="text"
+                  id="export_file"
+                  placeholder="C:\Research\references.bib"
+                />
+              </div>
+              <div id="f_api" class="source-panel" hidden>
+                <label for="api_key">API key</label
+                ><input type="password" id="api_key" autocomplete="off" />
+                <label for="user_id">User ID</label
+                ><input type="text" id="user_id" />
+                <label for="group_id"
+                  >Group ID <span>instead of user ID</span></label
+                ><input type="text" id="group_id" />
+              </div>
+              <button type="button" class="secondary wide" id="connect">
+                Load references <span aria-hidden="true">↗</span>
+              </button>
+            </fieldset>
+            <p id="libmsg" class="hint feedback" role="status"></p>
+            <div class="divider"></div>
+            <div class="section-heading">
+              <span class="step">02</span>
+              <div>
+                <h2>Your destination</h2>
+                <p>A place for the PDFs.</p>
+              </div>
+            </div>
+            <label for="dest_folder">Save to folder</label>
+            <div class="input-action">
+              <input
+                type="text"
+                id="dest_folder"
+                placeholder="D:\Research\Papers"
+              /><button type="button" class="secondary" id="browse">
+                Browse
+              </button>
+            </div>
+            <details class="settings">
+              <summary>Download settings</summary>
+              <label for="email">Contact email <span>optional</span></label
+              ><input type="email" id="email" placeholder="you@example.com" />
+              <label for="limit">Reference limit <span>optional</span></label
+              ><input
+                type="number"
+                id="limit"
+                min="1"
+                step="1"
+                placeholder="All selected references"
+              />
+              <label for="template">Filename template</label
+              ><input
+                type="text"
+                id="template"
+                value="{year}_{author}_{title}.pdf"
+              />
+              <label class="check"
+                ><input type="checkbox" id="include_zotero_has_pdf" /> Include
+                references with an existing PDF attachment</label
+              >
+              <label class="check"
+                ><input type="checkbox" id="force_redownload" /> Download again
+                if a matching file exists</label
+              >
+              <p class="hint">
+                Existing files are kept; new copies receive a numeric suffix.
+              </p>
+            </details>
+            <button type="button" id="go" class="primary wide">
+              Find & download PDFs <span aria-hidden="true">↓</span>
+            </button>
+            <p id="msg" class="feedback error" role="alert"></p>
+            <div class="safety-note">
+              <span aria-hidden="true">◇</span> Your Zotero library stays
+              read-only.
+            </div>
+          </aside>
+          <div class="main-column">
+            <section class="card library">
+              <div class="card-header">
+                <div>
+                  <div class="eyebrow">YOUR READING LIST</div>
+                  <h2>
+                    References <span id="library_count" class="count">0</span>
+                  </h2>
+                </div>
+                <span id="source_badge" class="tag">No source connected</span>
+              </div>
+              <div id="empty_library" class="empty">
+                <div class="empty-icon" aria-hidden="true">▤</div>
+                <h3>A new home for your reading list</h3>
+                <p>
+                  Load your Zotero library or upload a BibTeX file<br />to see
+                  and select your references.
+                </p>
+                <button type="button" id="upload_shortcut" class="secondary">
+                  Upload a .bib file
+                </button>
+              </div>
+              <div id="lib" hidden>
+                <div class="filters">
+                  <div class="search">
+                    <span aria-hidden="true">⌕</span
+                    ><input
+                      type="search"
+                      id="q"
+                      aria-label="Search references"
+                      placeholder="Search title, author, or DOI…"
+                    />
+                  </div>
+                  <select id="coll" aria-label="Filter collection">
+                    <option value="">All collections</option>
+                  </select>
+                </div>
+                <div class="selection-bar">
+                  <div class="selection-actions">
+                    <button type="button" id="select_all" class="text-button">
+                      Select all</button
+                    ><span class="muted">/</span
+                    ><button
+                      type="button"
+                      id="unselect_all"
+                      class="text-button"
+                    >
+                      Unselect all</button
+                    ><button
+                      type="button"
+                      id="select_shown"
+                      class="text-button"
+                    >
+                      Select shown
+                    </button>
+                  </div>
+                  <span id="selcount" class="hint" role="status"></span>
+                </div>
+                <div class="library-options">
+                  <label class="check"
+                    ><input type="checkbox" id="onlymiss" checked /> Only
+                    without a PDF attachment</label
+                  ><span class="hint"
+                    >Select all includes references hidden by filters.</span
+                  >
+                </div>
+                <div class="table-scroll reference-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th class="checkbox-cell">
+                          <input
+                            type="checkbox"
+                            id="select_visible"
+                            aria-label="Select or unselect all shown references"
+                          />
+                        </th>
+                        <th>Reference</th>
+                        <th>Year</th>
+                        <th>PDF</th>
+                      </tr>
+                    </thead>
+                    <tbody id="librows"></tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+            <section class="card activity">
+              <div class="card-header">
+                <div>
+                  <div class="eyebrow">THE JOURNEY</div>
+                  <h2>Download activity</h2>
+                </div>
+                <span class="tag" id="job_badge">Ready when you are</span>
+              </div>
+              <div class="activity-body">
+                <div class="progress-label">
+                  <span id="cur">Choose your references to get started.</span
+                  ><strong id="percentage">0%</strong>
+                </div>
+                <progress
+                  id="bar"
+                  value="0"
+                  max="1"
+                  aria-label="Download progress"
+                ></progress>
+                <div id="stats" class="stats">
+                  <div><strong>0</strong><span>Downloaded</span></div>
+                  <div><strong>0</strong><span>Skipped</span></div>
+                  <div><strong>0</strong><span>Need review</span></div>
+                </div>
+                <div id="rep" class="report" hidden></div>
+                <p id="job_error" class="error" role="alert"></p>
+              </div>
+              <div id="results_wrap" class="table-scroll" hidden>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Outcome</th>
+                      <th>Reference</th>
+                      <th>File / source</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rows"></tbody>
+                </table>
+              </div>
+              <details class="logs">
+                <summary>Activity log</summary>
+                <pre id="log">No activity yet.</pre>
+              </details>
+            </section>
+          </div>
+        </div>
+      </main>
+      <footer>
+        <span
+          >PaperHarbor <span class="muted">/</span> Made for curious
+          minds.</span
+        ><span
+          >Created by
+          <a
+            href="https://github.com/sayanmondal2098"
+            target="_blank"
+            rel="noopener"
+            >Sayan Mondal</a
+          ></span
+        >
+      </footer>
+    </div>
+  </body>
+</html>
