@@ -7,6 +7,7 @@
 <p align="center">Open-access PDF discovery for Zotero, BibTeX, and CSL-JSON libraries.</p>
 <p align="center">Created by <a href="https://github.com/sayanmondal2098">Sayan Mondal</a></p>
 <p align="center"><a href="https://sayanmondal2098.github.io">Personal website</a></p>
+<p align="center"><a href="LICENSE">MIT License</a> · <a href="https://github.com/sayanmondal2098/PaperHarbor/actions/workflows/python-package.yml">Python CI</a></p>
 
 PaperHarbor turns a paper DOI or URL, Zotero library, BibTeX bibliography, or CSL-JSON export into an organized collection of available open-access PDFs. Browse references in the local web interface, select papers, and save them to a folder you choose, or use the command line for repeatable batches. Zotero is optional for single papers, bibliography imports, and CSV report retries.
 
@@ -74,7 +75,7 @@ Each reference receives an outcome in the report, including references skipped b
 
 ## Requirements and installation
 
-- **Python 3.8 or later.** The project does not currently declare a tested Python-version matrix.
+- **Python 3.9–3.13.** The [GitHub Actions workflow](.github/workflows/python-package.yml) is configured to run linting and tests on these versions using Ubuntu.
 - A paper DOI or URL, local Zotero database, supported bibliography file, previous PaperHarbor report, or credentials for a Zotero API library.
 - An internet connection for provider searches and downloads.
 - A writable destination folder.
@@ -484,7 +485,9 @@ PaperHarbor/
 │   └── paperharbor-logo.svg   # README logo
 ├── main.py                   # CLI launcher
 ├── web.py                    # Web UI launcher
+├── LICENSE                   # MIT License
 ├── requirements.txt          # Runtime dependencies
+├── .github/workflows/        # Python lint and test workflow
 ├── paperharbor/
 │   ├── __init__.py           # Package metadata and version
 │   ├── __main__.py           # python -m paperharbor entry point
@@ -496,6 +499,9 @@ PaperHarbor/
 │   ├── downloader.py         # Streaming downloads and PDF checks
 │   ├── namer.py              # Filename sanitization and collisions
 │   ├── reporter.py           # CSV reports and status counts
+│   ├── single_paper.py       # Single-paper DOI/URL metadata reader
+│   ├── diagnose.py           # Candidate discovery diagnostic helper
+│   ├── recovery.py           # Report retries and manual-access guidance
 │   ├── providers/            # Discovery, aggregation, link resolution
 │   └── zotero/               # SQLite, export, and API readers
 └── tests/                    # Unit and integration tests
@@ -510,6 +516,14 @@ python -m unittest discover -s tests -v
 ```
 
 The suite covers filename generation, export parsing, SQLite reading, ACM, ResearchGate, and other providers, DOI identity checks, download retries, web-resource/withdrawal handling, CSV report imports, HTTP endpoints, and integration workflows. Network interactions are mocked; passing tests do not establish live provider availability.
+
+The [Python CI workflow](.github/workflows/python-package.yml) runs on pushes and pull requests targeting `main`. It installs the runtime dependencies, runs Flake8 checks, and executes the suite with pytest on Python 3.9, 3.10, 3.11, 3.12, and 3.13. To run the same tools locally:
+
+```bash
+python -m pip install -r requirements.txt flake8 pytest
+python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+python -m pytest tests -v
+```
 
 Check launcher options with:
 
@@ -532,4 +546,10 @@ Bug reports and pull requests are welcome through the [GitHub repository](https:
 
 ## License
 
-This repository does not currently include a `LICENSE` file. No specific open-source license is declared here.
+PaperHarbor is released under the [MIT License](LICENSE).
+
+Copyright (c) 2026 Sayan Mondal.
+
+You may use, modify, and redistribute the software, including commercially, provided you retain the copyright and license notice. The software is provided without warranty; see [LICENSE](LICENSE) for the full terms.
+
+This license applies to PaperHarbor's code. Downloaded papers and third-party dependencies retain their own licenses and rights.
