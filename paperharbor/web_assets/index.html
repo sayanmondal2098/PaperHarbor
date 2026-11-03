@@ -292,6 +292,7 @@
                   <div><strong>0</strong><span>Downloaded</span></div>
                   <div><strong>0</strong><span>Skipped</span></div>
                   <div><strong>0</strong><span>Need review</span></div>
+                  <div><button type="button" class="manual-stat" aria-controls="manual_section" disabled><strong>0</strong><span>Open manually</span></button></div>
                 </div>
                 <div id="rep" class="report" hidden></div>
                 <p id="job_error" class="error" role="alert"></p>
@@ -320,6 +321,30 @@
                 <summary>Activity log</summary>
                 <pre id="log">No activity yet.</pre>
               </details>
+            </section>
+            <section class="card" id="manual_section" tabindex="-1" hidden>
+              <div class="card-header">
+                <div>
+                  <div class="eyebrow">MANUAL FOLLOW-UP</div>
+                  <h2>Open manually</h2>
+                </div>
+                <span class="tag" id="manual_count">0 references</span>
+              </div>
+              <div class="activity-body">
+                <p class="hint">These references need to be opened in your browser. Use the source links below to find and save their PDFs.</p>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Outcome</th>
+                      <th>Reference</th>
+                      <th>File / source</th>
+                    </tr>
+                  </thead>
+                  <tbody id="manual_rows"></tbody>
+                </table>
+              </div>
             </section>
           </div>
         </div>

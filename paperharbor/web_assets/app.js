@@ -399,20 +399,24 @@ async function poll() {
     const review =
       (summary.PAYWALLED_OR_OA_NOT_FOUND || 0) +
       (summary.DOWNLOAD_FAILED || 0) +
-      (summary.OA_BLOCKED_MANUAL || 0) +
       (summary.ERROR || 0) +
       (summary.WITHDRAWN || 0);
     const statItems = [
       [summary.DOWNLOADED || 0, "Downloaded"],
       [skipped, "Skipped"],
       [review, "Need review"],
+      [summary.OA_BLOCKED_MANUAL || 0, "Open manually"],
     ];
     if (summary.WEB_RESOURCE)
       statItems.push([summary.WEB_RESOURCE, "Web resources"]);
     $("stats").innerHTML = statItems
       .map(
         ([n, label]) =>
-          "<div><strong>" + n + "</strong><span>" + label + "</span></div>",
+          label === "Open manually"
+            ? '<div><button type="button" class="manual-stat" aria-controls="manual_section"' +
+              (n ? "" : " disabled") +
+              '><strong>' + n + '</strong><span>Open manually</span></button></div>'
+            : "<div><strong>" + n + "</strong><span>" + label + "</span></div>",
       )
       .join("");
     $("job_error").textContent = state.error;
@@ -420,7 +424,16 @@ async function poll() {
     $("rep").textContent = state.report
       ? "CSV report saved to: " + state.report
       : "";
-    $("results_wrap").hidden = !state.results.length;
+    const manualResults = state.results.filter(
+      (result) => result.status === "OA_BLOCKED_MANUAL",
+    );
+    const activityResults = state.results.filter(
+      (result) => result.status !== "OA_BLOCKED_MANUAL",
+    );
+    $("results_wrap").hidden = !activityResults.length;
+    $("manual_section").hidden = !manualResults.length;
+    $("manual_count").textContent =
+      manualResults.length + (manualResults.length === 1 ? " reference" : " references");
     for (const result of state.results) {
       const token = result.key + "|" + result.auto_retry_url;
       if (
@@ -448,7 +461,7 @@ async function poll() {
     }
     const resultSignature = JSON.stringify(state.results);
     if (resultSignature !== lastResults) {
-      $("rows").innerHTML = state.results
+      const renderResults = (results) => results
         .slice()
         .reverse()
         .map(
@@ -518,6 +531,8 @@ async function poll() {
             "</details></td></tr>",
         )
         .join("");
+      $("rows").innerHTML = renderResults(activityResults);
+      $("manual_rows").innerHTML = renderResults(manualResults);
       lastResults = resultSignature;
     }
     const log = $("log"),
@@ -531,6 +546,14 @@ async function poll() {
     setTimeout(poll, 1000);
   }
 }
+
+$("stats").addEventListener("click", (event) => {
+  if (!event.target.closest(".manual-stat")) return;
+  const section = $("manual_section");
+  if (section.hidden) return;
+  section.focus({ preventScroll: true });
+  section.scrollIntoView({ behavior: "smooth", block: "start" });
+});
 
 $("src").addEventListener("change", sourceChanged);
 for (const id of [

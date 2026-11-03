@@ -886,3 +886,32 @@ footer a {
   border-radius: 8px;
   font-size: 13px;
 }
+
+.stats .manual-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.stats .manual-stat:not(:disabled):hover span {
+  color: var(--teal);
+  text-decoration: underline;
+}
+.stats .manual-stat:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 4px;
+}
+.stats .manual-stat:disabled {
+  cursor: default;
+}
+#manual_section {
+  scroll-margin-top: 24px;
+}
